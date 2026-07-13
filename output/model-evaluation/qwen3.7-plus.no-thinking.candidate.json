@@ -1,0 +1,413 @@
+{
+  "schemaVersion": "garaxe-llm-candidate-v1",
+  "model": "qwen3.7-plus",
+  "enableThinking": false,
+  "signals": [
+    {
+      "reviewId": "gold-01",
+      "signalType": "pain_point",
+      "label": "setup_complexity",
+      "quoteText": "Setup took three days before the team could begin.",
+      "quoteStart": 0,
+      "quoteEnd": 53
+    },
+    {
+      "reviewId": "gold-02",
+      "signalType": "pain_point",
+      "label": "slow_service",
+      "quoteText": "The service was painfully slow during our evening visit.",
+      "quoteStart": 0,
+      "quoteEnd": 54
+    },
+    {
+      "reviewId": "gold-03",
+      "signalType": "pain_point",
+      "label": "support_delay",
+      "quoteText": "Support never replied even after two follow-up messages.",
+      "quoteStart": 0,
+      "quoteEnd": 55
+    },
+    {
+      "reviewId": "gold-04",
+      "signalType": "pain_point",
+      "label": "reliability",
+      "quoteText": "It crashes every morning and interrupts our daily work.",
+      "quoteStart": 0,
+      "quoteEnd": 54
+    },
+    {
+      "reviewId": "gold-05",
+      "signalType": "pain_point",
+      "label": "unclear_documentation",
+      "quoteText": "The instructions sent me in circles when I tried the first setup.",
+      "quoteStart": 0,
+      "quoteEnd": 64
+    },
+    {
+      "reviewId": "gold-06",
+      "signalType": "objection",
+      "label": "price_too_high",
+      "quoteText": "The final bill felt much too high for what was delivered.",
+      "quoteStart": 0,
+      "quoteEnd": 57
+    },
+    {
+      "reviewId": "gold-07",
+      "signalType": "pain_point",
+      "label": "waiting_time",
+      "quoteText": "We waited almost an hour before anyone took our order.",
+      "quoteStart": 0,
+      "quoteEnd": 53
+    },
+    {
+      "reviewId": "gold-08",
+      "signalType": "emotion",
+      "label": "feeling_ignored",
+      "quoteText": "The staff made us feel unwelcome despite the quiet room.",
+      "quoteStart": 0,
+      "quoteEnd": 55
+    },
+    {
+      "reviewId": "gold-09",
+      "signalType": "pain_point",
+      "label": "delivery_delay",
+      "quoteText": "Delivery arrived four days late and the event had already passed.",
+      "quoteStart": 0,
+      "quoteEnd": 63
+    },
+    {
+      "reviewId": "gold-10",
+      "signalType": "pain_point",
+      "label": "usability",
+      "quoteText": "The dashboard is confusing to navigate for new team members.",
+      "quoteStart": 0,
+      "quoteEnd": 60
+    },
+    {
+      "reviewId": "gold-11",
+      "signalType": "pain_point",
+      "label": "data_reliability",
+      "quoteText": "Our saved settings disappeared twice after routine updates.",
+      "quoteStart": 0,
+      "quoteEnd": 56
+    },
+    {
+      "reviewId": "gold-12",
+      "signalType": "pain_point",
+      "label": "booking_friction",
+      "quoteText": "Booking by phone was impossible because the line kept dropping.",
+      "quoteStart": 0,
+      "quoteEnd": 61
+    },
+    {
+      "reviewId": "gold-13",
+      "signalType": "pain_point",
+      "label": "cleanliness",
+      "quoteText": "The room was not properly cleaned when we checked in.",
+      "quoteStart": 0,
+      "quoteEnd": 53
+    },
+    {
+      "reviewId": "gold-14",
+      "signalType": "desired_outcome",
+      "label": "easy_setup",
+      "quoteText": "I need setup to take minutes so a small team can start immediately.",
+      "quoteStart": 0,
+      "quoteEnd": 67
+    },
+    {
+      "reviewId": "gold-15",
+      "signalType": "desired_outcome",
+      "label": "on_time_delivery",
+      "quoteText": "We want service that arrives on time without repeated status calls.",
+      "quoteStart": 0,
+      "quoteEnd": 66
+    },
+    {
+      "reviewId": "gold-16",
+      "signalType": "desired_outcome",
+      "label": "quick_support",
+      "quoteText": "I want support to answer the same day when a client project is blocked.",
+      "quoteStart": 0,
+      "quoteEnd": 72
+    },
+    {
+      "reviewId": "gold-17",
+      "signalType": "desired_outcome",
+      "label": "reliable_tool",
+      "quoteText": "We need a tool that works every morning without an engineer watching it.",
+      "quoteStart": 0,
+      "quoteEnd": 72
+    },
+    {
+      "reviewId": "gold-18",
+      "signalType": "desired_outcome",
+      "label": "clear_documentation",
+      "quoteText": "I want instructions I can follow once and then work independently.",
+      "quoteStart": 0,
+      "quoteEnd": 66
+    },
+    {
+      "reviewId": "gold-19",
+      "signalType": "desired_outcome",
+      "label": "peace_of_mind",
+      "quoteText": "We are looking for peace of mind during our busiest season.",
+      "quoteStart": 0,
+      "quoteEnd": 59
+    },
+    {
+      "reviewId": "gold-20",
+      "signalType": "desired_outcome",
+      "label": "wait_time_visibility",
+      "quoteText": "I want a clear wait-time estimate before deciding whether to stay.",
+      "quoteStart": 0,
+      "quoteEnd": 65
+    },
+    {
+      "reviewId": "gold-21",
+      "signalType": "desired_outcome",
+      "label": "location_consistency",
+      "quoteText": "consistent service at every branch",
+      "quoteStart": 8,
+      "quoteEnd": 40
+    },
+    {
+      "reviewId": "gold-22",
+      "signalType": "desired_outcome",
+      "label": "transparent_pricing",
+      "quoteText": "pricing that is easy to understand before entering payment details",
+      "quoteStart": 7,
+      "quoteEnd": 69
+    },
+    {
+      "reviewId": "gold-23",
+      "signalType": "desired_outcome",
+      "label": "team_adoption",
+      "quoteText": "whole team to adopt it without weeks of training",
+      "quoteStart": 11,
+      "quoteEnd": 57
+    },
+    {
+      "reviewId": "gold-24",
+      "signalType": "desired_outcome",
+      "label": "effective_support",
+      "quoteText": "reply that solves the issue rather than another generic template",
+      "quoteStart": 10,
+      "quoteEnd": 71
+    },
+    {
+      "reviewId": "gold-25",
+      "signalType": "desired_outcome",
+      "label": "on_time_delivery",
+      "quoteText": "delivery before the promised date",
+      "quoteStart": 9,
+      "quoteEnd": 41
+    },
+    {
+      "reviewId": "gold-26",
+      "signalType": "desired_outcome",
+      "label": "welcoming_experience",
+      "quoteText": "first visit to feel welcoming from arrival through checkout",
+      "quoteStart": 10,
+      "quoteEnd": 65
+    },
+    {
+      "reviewId": "gold-27",
+      "signalType": "objection",
+      "label": "price_too_high",
+      "quoteText": "annual price is hard to justify",
+      "quoteStart": 4,
+      "quoteEnd": 34
+    },
+    {
+      "reviewId": "gold-28",
+      "signalType": "objection",
+      "label": "niche_fit",
+      "quoteText": "not sure it fits our niche",
+      "quoteStart": 7,
+      "quoteEnd": 33
+    },
+    {
+      "reviewId": "gold-29",
+      "signalType": "objection",
+      "label": "migration_risk",
+      "quoteText": "Moving all our records feels risky",
+      "quoteStart": 0,
+      "quoteEnd": 33
+    },
+    {
+      "reviewId": "gold-30",
+      "signalType": "objection",
+      "label": "learning_curve",
+      "quoteText": "learning curve may be too steep",
+      "quoteStart": 4,
+      "quoteEnd": 34
+    },
+    {
+      "reviewId": "gold-31",
+      "signalType": "objection",
+      "label": "contract_commitment",
+      "quoteText": "A twelve-month contract feels restrictive",
+      "quoteStart": 0,
+      "quoteEnd": 40
+    },
+    {
+      "reviewId": "gold-32",
+      "signalType": "objection",
+      "label": "data_security",
+      "quoteText": "I worry about where customer data is stored and who can access it.",
+      "quoteStart": 0,
+      "quoteEnd": 62
+    },
+    {
+      "reviewId": "gold-33",
+      "signalType": "objection",
+      "label": "social_proof",
+      "quoteText": "There are too few recent reviews for me to trust the advertised results.",
+      "quoteStart": 0,
+      "quoteEnd": 68
+    },
+    {
+      "reviewId": "gold-34",
+      "signalType": "pain_point",
+      "label": "plan_clarity",
+      "quoteText": "I cannot tell what the base plan includes compared with the upgrades.",
+      "quoteStart": 0,
+      "quoteEnd": 67
+    },
+    {
+      "reviewId": "gold-35",
+      "signalType": "objection",
+      "label": "integration_fit",
+      "quoteText": "It may not integrate with our current tools",
+      "quoteStart": 0,
+      "quoteEnd": 41
+    },
+    {
+      "reviewId": "gold-36",
+      "signalType": "objection",
+      "label": "vendor_capacity",
+      "quoteText": "I am unsure the small team can support us if our usage grows quickly.",
+      "quoteStart": 0,
+      "quoteEnd": 66
+    },
+    {
+      "reviewId": "gold-37",
+      "signalType": "objection",
+      "label": "cancellation_friction",
+      "quoteText": "The cancellation process looks complicated",
+      "quoteStart": 0,
+      "quoteEnd": 41
+    },
+    {
+      "reviewId": "gold-38",
+      "signalType": "desired_outcome",
+      "label": "multi_location_proof",
+      "quoteText": "I need proof it works across locations",
+      "quoteStart": 0,
+      "quoteEnd": 36
+    },
+    {
+      "reviewId": "gold-39",
+      "signalType": "emotion",
+      "label": "frustration",
+      "quoteText": "I felt completely frustrated after repeating the same setup four times.",
+      "quoteStart": 0,
+      "quoteEnd": 69
+    },
+    {
+      "reviewId": "gold-40",
+      "signalType": "emotion",
+      "label": "relief",
+      "quoteText": "I was relieved when it finally worked without another support call.",
+      "quoteStart": 0,
+      "quoteEnd": 64
+    },
+    {
+      "reviewId": "gold-41",
+      "signalType": "emotion",
+      "label": "doubt",
+      "quoteText": "I still feel doubtful",
+      "quoteStart": 0,
+      "quoteEnd": 20
+    },
+    {
+      "reviewId": "gold-42",
+      "signalType": "emotion",
+      "label": "confidence",
+      "quoteText": "I feel confident",
+      "quoteStart": 0,
+      "quoteEnd": 15
+    },
+    {
+      "reviewId": "gold-43",
+      "signalType": "emotion",
+      "label": "disappointment",
+      "quoteText": "deeply disappointed",
+      "quoteStart": 9,
+      "quoteEnd": 27
+    },
+    {
+      "reviewId": "gold-44",
+      "signalType": "emotion",
+      "label": "hope",
+      "quoteText": "I am hopeful",
+      "quoteStart": 0,
+      "quoteEnd": 11
+    },
+    {
+      "reviewId": "gold-45",
+      "signalType": "emotion",
+      "label": "exhaustion",
+      "quoteText": "left me exhausted",
+      "quoteStart": 8,
+      "quoteEnd": 24
+    },
+    {
+      "reviewId": "gold-46",
+      "signalType": "emotion",
+      "label": "reassurance",
+      "quoteText": "reassured me",
+      "quoteStart": 22,
+      "quoteEnd": 34
+    },
+    {
+      "reviewId": "gold-47",
+      "signalType": "emotion",
+      "label": "feeling_ignored",
+      "quoteText": "felt ignored",
+      "quoteStart": 2,
+      "quoteEnd": 12
+    },
+    {
+      "reviewId": "gold-48",
+      "signalType": "emotion",
+      "label": "restored_trust",
+      "quoteText": "restored my trust",
+      "quoteStart": 16,
+      "quoteEnd": 31
+    },
+    {
+      "reviewId": "gold-49",
+      "signalType": "emotion",
+      "label": "overwhelm",
+      "quoteText": "felt overwhelmed",
+      "quoteStart": 2,
+      "quoteEnd": 17
+    },
+    {
+      "reviewId": "gold-50",
+      "signalType": "emotion",
+      "label": "comfort",
+      "quoteText": "made me comfortable",
+      "quoteStart": 20,
+      "quoteEnd": 38
+    }
+  ],
+  "usage": {
+    "inputTokens": 2566,
+    "outputTokens": 3755,
+    "totalTokens": 6321
+  },
+  "latencyMs": 76529
+}

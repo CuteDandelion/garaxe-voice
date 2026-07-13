@@ -1,0 +1,46 @@
+{
+  "name": "garaxe-voice-mvp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx watch --env-file=.env server/index.ts",
+    "dev:web": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:server": "GARAXE_DB_DIR=memory:// vitest run server",
+    "evaluate:semantic": "tsx server/evaluation/semanticClusterEvaluator.ts",
+    "typecheck": "tsc -b --pretty false",
+    "migrate": "node scripts/apply-migrations.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@fontsource/cormorant-garamond": "^5.2.8",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.8",
+    "@huggingface/transformers": "^3.8.1",
+    "lucide-react": "^0.468.0",
+    "pg": "^8.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "read-excel-file": "^9.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^26.1.1",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "axe-core": "^4.12.1",
+    "concurrently": "^10.0.3",
+    "jsdom": "^25.0.1",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

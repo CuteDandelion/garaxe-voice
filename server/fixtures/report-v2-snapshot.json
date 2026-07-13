@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "report-snapshot-v2",
+  "generatedAt": "2026-07-13T19:30:00.000Z",
+  "project": { "id": "project-demo", "name": "Northstar Software" },
+  "analysisRun": { "id": "run-demo", "objective": "full_voice_map", "pipelineVersion": "semantic-voice-map-v5" },
+  "curation": { "sessionId": "curation-demo", "revision": 12, "readyAt": "2026-07-13T19:25:00.000Z" },
+  "versions": { "pipeline": "semantic-voice-map-v5", "synthesis": "voice-map-v2", "report": "report-snapshot-v2" },
+  "dataset": {
+    "counts": { "found": 48, "included": 42, "excluded": 6 },
+    "qualityReport": { "found": 48, "included": 42, "excluded": 6, "written": 42, "ratingOnly": 0, "confidence": "moderate" },
+    "sourceCount": 3
+  },
+  "narrative": {
+    "headline": "Reliable collaboration wins trust, but checkout delays put renewals at risk",
+    "executiveSummary": "Customers consistently value how quickly teams can collaborate across devices. The strongest business risk is the lag between payment and confirmation: several customers describe uncertainty, duplicate attempts, and abandoned upgrades. Protect the collaboration advantage while treating confirmation latency as an immediate conversion and trust issue.",
+    "opportunities": ["Turn cross-device collaboration into the lead proof point for acquisition.", "Use successful team workflows as onboarding examples."],
+    "risks": ["Delayed confirmation creates duplicate purchases and abandonment.", "Unclear recovery guidance increases support demand."],
+    "actions": [
+      { "priority": "now", "title": "Instrument and shorten confirmation latency", "rationale": "Approved feedback connects payment uncertainty to repeated attempts and abandoned upgrades.", "themeIds": ["theme-checkout"], "successMeasure": "Reduce p95 confirmation latency and checkout-related complaints over the next two runs." },
+      { "priority": "next", "title": "Make collaboration proof visible in onboarding", "rationale": "Customers repeatedly describe cross-device teamwork as the reason they stay.", "themeIds": ["theme-collaboration"], "successMeasure": "Increase onboarding completion for the shared-workflow step and track positive collaboration mentions." }
+    ],
+    "provenance": { "generator": "llm", "schemaVersion": "report-narrative-v1", "provider": "opencode_go", "model": "qwen3.7-plus", "generatedAt": "2026-07-13T19:30:00.000Z" },
+    "signals": []
+  },
+  "charts": {
+    "ratingDistribution": [{ "rating": 1, "count": 5 }, { "rating": 2, "count": 8 }, { "rating": 3, "count": 7 }, { "rating": 4, "count": 12 }, { "rating": 5, "count": 10 }],
+    "reviewTimeline": [{ "period": "2026-01", "count": 4 }, { "period": "2026-02", "count": 6 }, { "period": "2026-03", "count": 7 }, { "period": "2026-04", "count": 8 }, { "period": "2026-05", "count": 9 }, { "period": "2026-06", "count": 8 }],
+    "themePrevalence": [{ "themeId": "theme-checkout", "name": "Payment confirmation delays", "reviewCount": 14 }, { "themeId": "theme-collaboration", "name": "Cross-device collaboration", "reviewCount": 11 }]
+  },
+  "themes": [
+    {
+      "id": "theme-checkout", "rank": 1, "name": "Payment confirmation delays", "summary": "Root cause: confirmation state arrives late after payment. Consequence: customers retry, contact support, or abandon an upgrade.", "type": "pain", "sentiment": "negative", "confidence": "high",
+      "evidence": [
+        { "signalId": "signal-1", "reviewId": "review-1", "quote": "I paid twice because nothing changed after the first click", "originalText": "I paid twice because nothing changed after the first click. The upgrade appeared almost ten minutes later and support could not tell me whether the payment had gone through.", "provider": "google_business", "entity": "Berlin", "rating": 2, "sourceCreatedAt": "2026-06-04T00:00:00.000Z", "pinned": true },
+        { "signalId": "signal-2", "reviewId": "review-2", "quote": "gave up on the upgrade", "originalText": "The workspace is useful, but after the spinner ran for several minutes I gave up on the upgrade. I did not want to risk a duplicate charge.", "provider": "csv_upload", "entity": "London", "rating": 3, "sourceCreatedAt": "2026-05-18T00:00:00.000Z", "pinned": false }
+      ]
+    },
+    {
+      "id": "theme-collaboration", "rank": 2, "name": "Cross-device collaboration", "summary": "Root cause: shared work remains synchronized across desktop and mobile. Consequence: distributed teams can resume work without coordination overhead.", "type": "outcome", "sentiment": "positive", "confidence": "high",
+      "evidence": [
+        { "signalId": "signal-3", "reviewId": "review-3", "quote": "picked up the same board on my phone", "originalText": "I started planning at my desk, picked up the same board on my phone during the train ride, and my colleague could see every change without asking me to resend anything.", "provider": "google_business", "entity": "Paris", "rating": 5, "sourceCreatedAt": "2026-04-11T00:00:00.000Z", "pinned": true },
+        { "signalId": "signal-4", "reviewId": "review-4", "quote": "everyone was looking at the same version", "originalText": "For the first time everyone was looking at the same version in our Monday review. That sounds small, but it removed twenty minutes of file hunting from every meeting.", "provider": "csv_upload", "entity": "Amsterdam", "rating": 5, "sourceCreatedAt": "2026-03-25T00:00:00.000Z", "pinned": false }
+      ]
+    }
+  ]
+}

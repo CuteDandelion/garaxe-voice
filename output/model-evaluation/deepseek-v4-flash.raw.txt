@@ -1,0 +1,269 @@
+{
+  "schemaVersion": "garaxe-llm-candidate-v1",
+  "signals": [
+    {
+      "reviewId": "gold-01",
+      "signalType": "pain_point",
+      "label": "setup_complexity",
+      "quoteText": "Setup took three days",
+      "quoteStart": 0,
+      "quoteEnd": 21
+    },
+    {
+      "reviewId": "gold-02",
+      "signalType": "pain_point",
+      "label": "slow_service",
+      "quoteText": "painfully slow",
+      "quoteStart": 16,
+      "quoteEnd": 30
+    },
+    {
+      "reviewId": "gold-03",
+      "signalType": "pain_point",
+      "label": "feeling_ignored",
+      "quoteText": "never replied",
+      "quoteStart": 8,
+      "quoteEnd": 21
+    },
+    {
+      "reviewId": "gold-04",
+      "signalType": "pain_point",
+      "label": "reliability",
+      "quoteText": "crashes every morning",
+      "quoteStart": 3,
+      "quoteEnd": 24
+    },
+    {
+      "reviewId": "gold-05",
+      "signalType": "pain_point",
+      "label": "unclear_documentation",
+      "quoteText": "sent me in circles",
+      "quoteStart": 17,
+      "quoteEnd": 35
+    },
+    {
+      "reviewId": "gold-06",
+      "signalType": "pain_point",
+      "label": "price_too_high",
+      "quoteText": "much too high",
+      "quoteStart": 20,
+      "quoteEnd": 33
+    },
+    {
+      "reviewId": "gold-07",
+      "signalType": "pain_point",
+      "label": "waiting_time",
+      "quoteText": "waited almost an hour",
+      "quoteStart": 3,
+      "quoteEnd": 24
+    },
+    {
+      "reviewId": "gold-08",
+      "signalType": "pain_point",
+      "label": "staff_friendliness",
+      "quoteText": "made us feel unwelcome",
+      "quoteStart": 10,
+      "quoteEnd": 32
+    },
+    {
+      "reviewId": "gold-09",
+      "signalType": "pain_point",
+      "label": "delivery_delay",
+      "quoteText": "four days late",
+      "quoteStart": 17,
+      "quoteEnd": 31
+    },
+    {
+      "reviewId": "gold-10",
+      "signalType": "pain_point",
+      "label": "usability",
+      "quoteText": "confusing to navigate",
+      "quoteStart": 17,
+      "quoteEnd": 38
+    }
+  ]
+}
+
+--- batch ---
+
+[batch failed: LlmProviderError]
+
+--- batch ---
+
+{
+  "schemaVersion": "garaxe-llm-candidate-v1",
+  "signals": [
+    {
+      "reviewId": "gold-21",
+      "signalType": "desired_outcome",
+      "label": "location_consistency",
+      "quoteText": "We need consistent service at every branch for traveling team members.",
+      "quoteStart": 0,
+      "quoteEnd": 70
+    },
+    {
+      "reviewId": "gold-22",
+      "signalType": "desired_outcome",
+      "label": "transparent_pricing",
+      "quoteText": "I want pricing that is easy to understand before entering payment details.",
+      "quoteStart": 0,
+      "quoteEnd": 67
+    },
+    {
+      "reviewId": "gold-23",
+      "signalType": "desired_outcome",
+      "label": "team_adoption",
+      "quoteText": "We need our whole team to adopt it without weeks of training.",
+      "quoteStart": 0,
+      "quoteEnd": 59
+    },
+    {
+      "reviewId": "gold-24",
+      "signalType": "desired_outcome",
+      "label": "effective_support",
+      "quoteText": "I want a reply that solves the issue rather than another generic template.",
+      "quoteStart": 0,
+      "quoteEnd": 70
+    },
+    {
+      "reviewId": "gold-25",
+      "signalType": "desired_outcome",
+      "label": "on_time_delivery",
+      "quoteText": "We need delivery before the promised date for scheduled customer launches.",
+      "quoteStart": 0,
+      "quoteEnd": 68
+    },
+    {
+      "reviewId": "gold-26",
+      "signalType": "desired_outcome",
+      "label": "welcoming_experience",
+      "quoteText": "I want the first visit to feel welcoming from arrival through checkout.",
+      "quoteStart": 0,
+      "quoteEnd": 66
+    },
+    {
+      "reviewId": "gold-27",
+      "signalType": "pain_point",
+      "label": "price_too_high",
+      "quoteText": "The annual price is hard to justify before we see measurable results.",
+      "quoteStart": 0,
+      "quoteEnd": 67
+    },
+    {
+      "reviewId": "gold-28",
+      "signalType": "emotion",
+      "label": "doubt",
+      "quoteText": "I am not sure it fits our niche because our workflow is unusual.",
+      "quoteStart": 0,
+      "quoteEnd": 62
+    },
+    {
+      "reviewId": "gold-29",
+      "signalType": "pain_point",
+      "label": "migration_risk",
+      "quoteText": "Moving all our records feels risky without a reversible import.",
+      "quoteStart": 0,
+      "quoteEnd": 61
+    },
+    {
+      "reviewId": "gold-30",
+      "signalType": "pain_point",
+      "label": "learning_curve",
+      "quoteText": "The learning curve may be too steep for colleagues with limited time.",
+      "quoteStart": 0,
+      "quoteEnd": 69
+    }
+  ]
+}
+
+--- batch ---
+
+[batch failed: LlmProviderError]
+
+--- batch ---
+
+{
+  "schemaVersion": "garaxe-llm-candidate-v1",
+  "signals": [
+    {
+      "reviewId": "gold-41",
+      "signalType": "emotion",
+      "label": "doubt",
+      "quoteText": "doubtful",
+      "quoteStart": 13,
+      "quoteEnd": 21
+    },
+    {
+      "reviewId": "gold-42",
+      "signalType": "emotion",
+      "label": "confidence",
+      "quoteText": "confident",
+      "quoteStart": 7,
+      "quoteEnd": 16
+    },
+    {
+      "reviewId": "gold-43",
+      "signalType": "emotion",
+      "label": "disappointment",
+      "quoteText": "disappointed",
+      "quoteStart": 15,
+      "quoteEnd": 27
+    },
+    {
+      "reviewId": "gold-44",
+      "signalType": "emotion",
+      "label": "hope",
+      "quoteText": "hopeful",
+      "quoteStart": 5,
+      "quoteEnd": 12
+    },
+    {
+      "reviewId": "gold-45",
+      "signalType": "emotion",
+      "label": "exhaustion",
+      "quoteText": "exhausted",
+      "quoteStart": 19,
+      "quoteEnd": 28
+    },
+    {
+      "reviewId": "gold-46",
+      "signalType": "emotion",
+      "label": "reassurance",
+      "quoteText": "reassured",
+      "quoteStart": 22,
+      "quoteEnd": 31
+    },
+    {
+      "reviewId": "gold-47",
+      "signalType": "emotion",
+      "label": "feeling_ignored",
+      "quoteText": "ignored",
+      "quoteStart": 7,
+      "quoteEnd": 14
+    },
+    {
+      "reviewId": "gold-48",
+      "signalType": "emotion",
+      "label": "restored_trust",
+      "quoteText": "restored my trust",
+      "quoteStart": 19,
+      "quoteEnd": 36
+    },
+    {
+      "reviewId": "gold-49",
+      "signalType": "emotion",
+      "label": "overwhelm",
+      "quoteText": "overwhelmed",
+      "quoteStart": 7,
+      "quoteEnd": 18
+    },
+    {
+      "reviewId": "gold-50",
+      "signalType": "emotion",
+      "label": "welcoming_experience",
+      "quoteText": "friendly welcome",
+      "quoteStart": 4,
+      "quoteEnd": 20
+    }
+  ]
+}

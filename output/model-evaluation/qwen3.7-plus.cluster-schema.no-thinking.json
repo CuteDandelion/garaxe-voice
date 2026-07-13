@@ -1,0 +1,444 @@
+{
+  "evaluation": "production-cluster-schema-no-thinking-v1",
+  "analysisRunId": "c9da4507-7804-4220-8cae-84e6d7bc5354",
+  "analysisRunCreatedAt": "2026-07-13T14:36:35.518Z",
+  "evaluatedAt": "2026-07-13T14:46:24.312Z",
+  "model": "qwen3.7-plus",
+  "enableThinking": false,
+  "promptVersion": "root-cause-first-v6",
+  "schemaVersion": "cluster-interpretation-v3",
+  "batches": {
+    "total": 18,
+    "completed": 18
+  },
+  "candidates": {
+    "expected": 70,
+    "accepted": 14,
+    "rejected": 14,
+    "acceptanceRate": 0.2,
+    "rejectionReasons": {
+      "invalid_envelope": 14
+    }
+  },
+  "performance": {
+    "totalLatencyMs": 588785,
+    "averageBatchLatencyMs": 32710,
+    "p50BatchLatencyMs": 33897,
+    "p95BatchLatencyMs": 34586,
+    "inputTokens": 44881,
+    "outputTokens": 31122,
+    "totalTokens": 76003
+  },
+  "batchResults": [
+    {
+      "batch": 1,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34586,
+      "finishReason": "length"
+    },
+    {
+      "batch": 2,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 32642,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 3,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34095,
+      "finishReason": "length"
+    },
+    {
+      "batch": 4,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34361,
+      "finishReason": "length"
+    },
+    {
+      "batch": 5,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 33790,
+      "finishReason": "length"
+    },
+    {
+      "batch": 6,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34254,
+      "finishReason": "length"
+    },
+    {
+      "batch": 7,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34129,
+      "finishReason": "length"
+    },
+    {
+      "batch": 8,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 33805,
+      "finishReason": "length"
+    },
+    {
+      "batch": 9,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34085,
+      "finishReason": "length"
+    },
+    {
+      "batch": 10,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 33897,
+      "finishReason": "length"
+    },
+    {
+      "batch": 11,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 33643,
+      "finishReason": "length"
+    },
+    {
+      "batch": 12,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 31175,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 13,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34406,
+      "finishReason": "length"
+    },
+    {
+      "batch": 14,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 33795,
+      "finishReason": "length"
+    },
+    {
+      "batch": 15,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 30104,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 16,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 33998,
+      "finishReason": "length"
+    },
+    {
+      "batch": 17,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_envelope"
+      ],
+      "latencyMs": 34102,
+      "finishReason": "length"
+    },
+    {
+      "batch": 18,
+      "expectedCandidates": 2,
+      "acceptedCandidates": 2,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 17918,
+      "finishReason": "stop"
+    }
+  ],
+  "candidateSummaries": [
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:pain_point:hzi3t2",
+      "label": "Missing Item Return Schedule",
+      "aspect": "in-game store UI",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "objection"
+      ],
+      "rootCause": "The in-game store interface fails to display the return date or schedule for rotating cosmetic bundles.",
+      "consequence": "Customers hesitate to purchase due to perceived artificial urgency.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:praise:1f2c6p1",
+      "label": "Persistent Local Co-op Settings",
+      "aspect": "local co-op configuration",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "The local co-op mode preserves individual player control settings and camera sensitivity across sessions.",
+      "consequence": "Players can start playing immediately without needing to reconfigure controls.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:pain_point:t4i5uy",
+      "label": "Missing Armor Penetration Tutorial",
+      "aspect": "tutorial content",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain"
+      ],
+      "rootCause": "The tutorial explains movement mechanics but omits instructions on how armor penetration works.",
+      "consequence": "The first armored encounter feels confusing rather than difficult.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:praise:lk2wov",
+      "label": "Flexible Seasonal Challenge Schedule",
+      "aspect": "seasonal challenge design",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Seasonal challenges reward experimentation and do not force daily logins.",
+      "consequence": "Players can return on weekends without falling behind in progress.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:pain_point:ps10q2",
+      "label": "Camera Shake Reset Bug",
+      "aspect": "Accessibility Settings Persistence",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Camera shake setting resets to maximum after every restart despite being disabled by the user.",
+      "consequence": "Motion sickness prevents players from engaging in longer gaming sessions.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:praise:1jpqgnn",
+      "label": "Dynamic Mission Replayability",
+      "aspect": "Mission Design and AI Behavior",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Enemy factions fight each other and create unscripted openings, ensuring missions vary on replay.",
+      "consequence": null,
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": false
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:pain_point:holiti",
+      "label": "Save Corruption on Crash",
+      "aspect": "Data Integrity and Stability",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Game crashes during autosave and corrupts the newest save slot.",
+      "consequence": "Player loses nearly two hours of progress.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:praise:rp1ghl",
+      "label": "Persistent Co-op Settings",
+      "aspect": "Local Co-op Configuration",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Local co-op preserves each player’s control settings and camera sensitivity across sessions.",
+      "consequence": "Players can start playing without reconfiguring everything.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:pain_point:12emnpb",
+      "label": "Data Loss & Connectivity Failures",
+      "aspect": "Network Stability and Reward Persistence",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Server-client synchronization failure during disconnection events causes loss of mission rewards despite server-side completion records.",
+      "consequence": "Players feel their time investment is wasted due to lost progress.",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:praise:6f43qx",
+      "label": "Dynamic Audio Mixing",
+      "aspect": "Soundtrack Behavior During Dialogue",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "The soundtrack volume automatically decreases during dialogue scenes and restores smoothly afterward, ensuring narrative clarity without abrupt audio shifts.",
+      "consequence": "Important story scenes remain easy to follow for the player.",
+      "confidence": 0.9,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:product_aspect:12emnpb",
+      "label": "UI Navigation & Quest Clarity",
+      "aspect": "User Interface and Quest Log Design",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Crafting materials are hidden behind nested tabs and quest objectives lack specific regional identifiers, forcing players to consult external guides.",
+      "consequence": "Players spend excessive time searching menus or checking guides instead of playing.",
+      "confidence": 0.85,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:praise:1c248wr",
+      "label": "Performance & Gameplay Polish",
+      "aspect": "Loading Times, Combat Mechanics, and Accessibility",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Recent patches significantly reduced loading times, implemented consistent parry timing with readable enemy wind-ups, and added clear, large subtitles with speaker identification.",
+      "consequence": "Mission restarts are less frustrating, combat feels earned and fair, and story comprehension is improved.",
+      "confidence": 0.92,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:product_aspect:1ta155s",
+      "label": "Map Icon Color Contrast",
+      "aspect": "UI/UX Design",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Map icons for quests and vendors use very similar colors, causing visual confusion.",
+      "consequence": "Player walks to the wrong marker.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "c9da4507-7804-4220-8cae-84e6d7bc5354:theme:pain_point:1i5hidd",
+      "label": "Delayed Currency Delivery",
+      "aspect": "Transaction Processing",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "emotion",
+        "operational_issue"
+      ],
+      "rootCause": "Purchased currency was charged immediately but did not appear in the account until the next day.",
+      "consequence": "Customer worried that the payment had been lost.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    }
+  ]
+}

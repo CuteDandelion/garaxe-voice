@@ -1,0 +1,10 @@
+.auth-gate { min-height: 100vh; display: grid; place-items: center; padding: 2rem; background: var(--paper, #f5f1e8); color: #171713; }
+.auth-gate__panel { width: min(100%, 38rem); border: 1px solid rgba(23, 23, 19, .16); padding: clamp(2rem, 6vw, 4.5rem); background: rgba(255,255,255,.25); }
+.auth-gate__eyebrow { margin: 0 0 1.25rem; font: 600 .72rem/1.2 'Space Grotesk', sans-serif; letter-spacing: .15em; text-transform: uppercase; }
+.auth-gate h1 { max-width: 12ch; margin: 0 0 1rem; font: 500 clamp(2.8rem, 8vw, 5rem)/.93 'Cormorant Garamond', serif; letter-spacing: -.035em; }
+.auth-gate p { max-width: 34rem; line-height: 1.6; }
+.auth-gate form { display: grid; gap: 1rem; margin-top: 2.5rem; }
+.auth-gate label { display: grid; gap: .45rem; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; }
+.auth-gate input { min-height: 3rem; border: 0; border-bottom: 1px solid #171713; padding: .6rem 0; background: transparent; color: inherit; font: 400 1rem/1.2 Inter, sans-serif; }
+.auth-gate button { min-height: 3.2rem; margin-top: .75rem; border: 1px solid #171713; background: #171713; color: #fff; font: 600 .82rem/1 'Space Grotesk', sans-serif; }
+.auth-gate button:disabled { opacity: .55; }

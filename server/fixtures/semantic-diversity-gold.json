@@ -1,0 +1,43 @@
+{
+  "version": "semantic-diversity-gold-v1",
+  "thresholds": {
+    "minimumPurity": 0.8,
+    "minimumPairRecall": 0.45,
+    "minimumCoverage": 0.5,
+    "maximumCrossTopicMergeRate": 0.03,
+    "minimumMixedClusterAdjudicationRecall": 1
+  },
+  "cases": [
+    { "id": "bank-1", "topic": "bank_transfer_delay", "text": "The international wire is still pending and the recipient has not received the funds." },
+    { "id": "bank-2", "topic": "bank_transfer_delay", "text": "Money left my account yesterday, but it never reached the beneficiary." },
+    { "id": "bank-3", "topic": "bank_transfer_delay", "text": "Our supplier is waiting because the cross-border payment remains in processing." },
+
+    { "id": "restaurant-1", "topic": "restaurant_noise", "text": "The music was so loud that we could not hold a conversation over dinner." },
+    { "id": "restaurant-2", "topic": "restaurant_noise", "text": "Everyone at the table had to shout because the dining room volume was overwhelming." },
+    { "id": "restaurant-3", "topic": "restaurant_noise", "text": "Conversation became impossible once the speakers were turned up." },
+
+    { "id": "saas-1", "topic": "saas_permissions", "text": "Our analyst role cannot export reports even though the permission is enabled." },
+    { "id": "saas-2", "topic": "saas_permissions", "text": "Access controls say the teammate may download data, but the export button stays locked." },
+    { "id": "saas-3", "topic": "saas_permissions", "text": "Role settings are inconsistent and authorized users are blocked from reports." },
+
+    { "id": "game-1", "topic": "game_matchmaking", "text": "Our new squad keeps facing coordinated top-rank teams in one-sided matches." },
+    { "id": "game-2", "topic": "game_matchmaking", "text": "Beginners are repeatedly paired against veteran groups and stop queuing." },
+    { "id": "game-3", "topic": "game_matchmaking", "text": "The ranking system creates unfair lobbies between novices and experienced players." },
+
+    { "id": "delivery-1", "topic": "cold_food_delivery", "text": "The meal arrived cold and the fries were soggy after the courier delay." },
+    { "id": "delivery-2", "topic": "cold_food_delivery", "text": "Our pizza was chilled by the time the delivery reached the door." },
+    { "id": "delivery-3", "topic": "cold_food_delivery", "text": "Late transport left the takeaway lukewarm and unpleasant to eat." },
+
+    { "id": "hotel-1", "topic": "hotel_hot_water", "text": "There was no hot water in the shower during our entire hotel stay." },
+    { "id": "hotel-2", "topic": "hotel_hot_water", "text": "The bathroom tap stayed cold because the building boiler had failed." },
+    { "id": "hotel-3", "topic": "hotel_hot_water", "text": "We could not take a warm shower and maintenance never restored the water heater." },
+
+    { "id": "retail-1", "topic": "retail_return_refund", "text": "The shop accepted my return but the refund has not appeared on my card." },
+    { "id": "retail-2", "topic": "retail_return_refund", "text": "I sent the item back weeks ago and am still waiting for reimbursement." },
+    { "id": "retail-3", "topic": "retail_return_refund", "text": "The returned product was received, yet the merchant has not credited the purchase." },
+
+    { "id": "clinic-1", "topic": "clinic_appointment_wait", "text": "I arrived on time for the appointment but waited ninety minutes to see the doctor." },
+    { "id": "clinic-2", "topic": "clinic_appointment_wait", "text": "The consultation started more than an hour late with no update from reception." },
+    { "id": "clinic-3", "topic": "clinic_appointment_wait", "text": "Patients remained in the waiting room long after their scheduled medical visits." }
+  ]
+}

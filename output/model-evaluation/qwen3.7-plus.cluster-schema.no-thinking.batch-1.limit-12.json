@@ -1,0 +1,294 @@
+{
+  "evaluation": "production-cluster-schema-no-thinking-v1",
+  "analysisRunId": "b24c61fb-d06b-45ae-81a4-acf5939eabda",
+  "analysisRunCreatedAt": "2026-07-13T14:47:41.797Z",
+  "evaluatedAt": "2026-07-13T14:49:57.284Z",
+  "model": "qwen3.7-plus",
+  "enableThinking": false,
+  "evaluationBatchSize": 1,
+  "themeLimit": 12,
+  "promptVersion": "root-cause-first-v6",
+  "schemaVersion": "cluster-interpretation-v3",
+  "batches": {
+    "total": 12,
+    "completed": 12
+  },
+  "candidates": {
+    "expected": 12,
+    "accepted": 9,
+    "rejected": 3,
+    "acceptanceRate": 0.75,
+    "rejectionReasons": {
+      "invalid_candidate": 3
+    }
+  },
+  "performance": {
+    "totalLatencyMs": 135478,
+    "averageBatchLatencyMs": 11290,
+    "p50BatchLatencyMs": 9849,
+    "p95BatchLatencyMs": 16158,
+    "inputTokens": 10785,
+    "outputTokens": 6507,
+    "totalTokens": 17292
+  },
+  "batchResults": [
+    {
+      "batch": 1,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_candidate"
+      ],
+      "latencyMs": 13864,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 2,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 10045,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 3,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 9768,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 4,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 10174,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 5,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 9448,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 6,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 9396,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 7,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 9726,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 8,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 9849,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 9,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 12391,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 10,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 1,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 8686,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 11,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_candidate"
+      ],
+      "latencyMs": 15973,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 12,
+      "expectedCandidates": 1,
+      "acceptedCandidates": 0,
+      "rejectedCandidates": 1,
+      "rejectionReasons": [
+        "invalid_candidate"
+      ],
+      "latencyMs": 16158,
+      "finishReason": "stop"
+    }
+  ],
+  "candidateSummaries": [
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:praise:7cbekm",
+      "label": "Self-Sufficient Accessibility Controls",
+      "aspect": "accessibility menu features",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "comprehensive in-game accessibility options (subtitle resizing, flash reduction, full action remapping) that allow independent customization",
+      "consequence": "ability to play comfortably without requiring assistance from others to modify game files or settings",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:pain_point:1imeqs",
+      "label": "Delayed Currency Delivery",
+      "aspect": "in-game purchase fulfillment",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue",
+        "emotion"
+      ],
+      "rootCause": "Purchased currency was charged immediately but failed to appear in the user's account until the next day.",
+      "consequence": "Customer worried that the payment had been lost.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:praise:ykrvyv",
+      "label": "Flexible Seasonal Challenge Design",
+      "aspect": "game mechanics and progression system",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "seasonal challenges that reward experimentation without requiring daily logins",
+      "consequence": "ability to return on weekends without falling behind in progress",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:pain_point:hzi3t2",
+      "label": "Missing Item Return Date",
+      "aspect": "Store UI/Information Display",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "objection",
+        "emotion"
+      ],
+      "rootCause": "The store interface fails to display the return date for rotated cosmetic bundles.",
+      "consequence": "Customers hesitate to purchase due to perceived artificial urgency.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:praise:1f2c6p1",
+      "label": "Local Co-op Control Preservation",
+      "aspect": "local co-op control settings",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "preservation of individual player control settings and camera sensitivity in local co-op mode",
+      "consequence": "players can start playing immediately without reconfiguring controls",
+      "confidence": 1,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:pain_point:t4i5uy",
+      "label": "Missing Armor Penetration Tutorial",
+      "aspect": "tutorial content",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "The tutorial omits instruction on how armor penetration mechanics work.",
+      "consequence": "Players experience confusion rather than challenge during their first armored encounters.",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:praise:lk2wov",
+      "label": "Flexible Progression Design",
+      "aspect": "gameplay progression system",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise",
+        "desired_outcome"
+      ],
+      "rootCause": "seasonal challenges that reward experimentation without forcing daily logins",
+      "consequence": "ability to return on weekends without falling behind",
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:pain_point:x3ftc9",
+      "label": "Post-Update Technical Instability",
+      "aspect": "Game stability and UI integrity",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "June balance updates introduced matchmaking latency, skill-gap imbalances, central-zone freezing, character encoding failures, and unvalidated form submissions.",
+      "consequence": "Players abandoned competitive modes and lost in-game actions due to freezes or unexpected form submissions.",
+      "confidence": 0.95,
+      "evidenceCount": 4,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "b24c61fb-d06b-45ae-81a4-acf5939eabda:theme:praise:10kl9pi",
+      "label": "Balanced Hard Mode Difficulty",
+      "aspect": "game difficulty design",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "enemy behavior changes that maintain tension without relying on inflated health values",
+      "consequence": null,
+      "confidence": 0.95,
+      "evidenceCount": 2,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": false
+    }
+  ]
+}

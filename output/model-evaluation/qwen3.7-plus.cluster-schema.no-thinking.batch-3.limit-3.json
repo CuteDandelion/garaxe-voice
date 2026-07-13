@@ -1,0 +1,93 @@
+{
+  "evaluation": "production-cluster-schema-no-thinking-v1",
+  "analysisRunId": "69da5134-1d7c-4c1c-af03-65b425508322",
+  "analysisRunCreatedAt": "2026-07-13T15:01:46.083Z",
+  "evaluatedAt": "2026-07-13T15:02:08.269Z",
+  "model": "qwen3.7-plus",
+  "enableThinking": false,
+  "evaluationBatchSize": 3,
+  "themeLimit": 3,
+  "promptVersion": "root-cause-first-v7-compact",
+  "schemaVersion": "cluster-interpretation-v3",
+  "batches": {
+    "total": 1,
+    "completed": 1
+  },
+  "candidates": {
+    "expected": 3,
+    "accepted": 3,
+    "rejected": 0,
+    "acceptanceRate": 1,
+    "rejectionReasons": {}
+  },
+  "performance": {
+    "totalLatencyMs": 22172,
+    "averageBatchLatencyMs": 22172,
+    "p50BatchLatencyMs": 22172,
+    "p95BatchLatencyMs": 22172,
+    "inputTokens": 1868,
+    "outputTokens": 1135,
+    "totalTokens": 3003
+  },
+  "batchResults": [
+    {
+      "batch": 1,
+      "expectedCandidates": 3,
+      "acceptedCandidates": 3,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 22172,
+      "finishReason": "stop"
+    }
+  ],
+  "candidateSummaries": [
+    {
+      "themeId": "69da5134-1d7c-4c1c-af03-65b425508322:theme:pain_point:wy78ii",
+      "label": "Game freeze causes missed actions",
+      "aspect": "Performance stability",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Game freezes when multiple effects appear in central zone.",
+      "consequence": "Player misses actions despite correct input.",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "69da5134-1d7c-4c1c-af03-65b425508322:theme:praise:7cbekm",
+      "label": "Accessible settings enable independent play",
+      "aspect": "Accessibility features",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Menu allows resizing subtitles, reducing flashes, remapping actions.",
+      "consequence": "Player plays comfortably without external assistance.",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "69da5134-1d7c-4c1c-af03-65b425508322:theme:pain_point:1imeqs",
+      "label": "Delayed currency delivery after purchase",
+      "aspect": "Transaction processing",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue",
+        "emotion"
+      ],
+      "rootCause": "Purchased currency charged immediately but delivered next day.",
+      "consequence": "Player worried payment was lost.",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    }
+  ]
+}

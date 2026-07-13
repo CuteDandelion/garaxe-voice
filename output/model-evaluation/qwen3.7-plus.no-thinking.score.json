@@ -1,0 +1,28 @@
+{
+  "fixtureVersion": "garaxe-llm-eval-fixture-v1",
+  "candidateSchemaVersion": "garaxe-llm-candidate-v1",
+  "schema": {
+    "valid": true,
+    "errors": []
+  },
+  "evidence": {
+    "exactSpanCount": 10,
+    "candidateSignalCount": 50,
+    "exactSpanFidelity": 0.2
+  },
+  "taxonomy": {
+    "truePositive": 45,
+    "falsePositive": 5,
+    "falseNegative": 5,
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9
+  },
+  "performance": {
+    "inputTokens": 2566,
+    "outputTokens": 3755,
+    "totalTokens": 6321,
+    "latencyMs": 76529,
+    "outputTokensPerSecond": 49.066367
+  }
+}

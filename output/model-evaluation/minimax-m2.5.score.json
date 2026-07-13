@@ -1,0 +1,42 @@
+{
+  "fixtureVersion": "garaxe-llm-eval-fixture-v1",
+  "candidateSchemaVersion": "garaxe-llm-candidate-v1",
+  "schema": {
+    "valid": false,
+    "errors": [
+      "signals[10].signalType is outside the governed taxonomy",
+      "signals[11].signalType is outside the governed taxonomy",
+      "signals[27].signalType is outside the governed taxonomy",
+      "signals[35].signalType is outside the governed taxonomy",
+      "signals[40].signalType is outside the governed taxonomy",
+      "signals[41].signalType is outside the governed taxonomy",
+      "signals[42].signalType is outside the governed taxonomy",
+      "signals[43].signalType is outside the governed taxonomy",
+      "signals[44].signalType is outside the governed taxonomy",
+      "signals[45].signalType is outside the governed taxonomy",
+      "signals[47].signalType is outside the governed taxonomy",
+      "signals[48].signalType is outside the governed taxonomy",
+      "signals[49].signalType is outside the governed taxonomy"
+    ]
+  },
+  "evidence": {
+    "exactSpanCount": 11,
+    "candidateSignalCount": 50,
+    "exactSpanFidelity": 0.22
+  },
+  "taxonomy": {
+    "truePositive": 28,
+    "falsePositive": 22,
+    "falseNegative": 22,
+    "precision": 0.56,
+    "recall": 0.56,
+    "f1": 0.56
+  },
+  "performance": {
+    "inputTokens": 2574,
+    "outputTokens": 6693,
+    "totalTokens": 9267,
+    "latencyMs": 79906,
+    "outputTokensPerSecond": 83.760919
+  }
+}

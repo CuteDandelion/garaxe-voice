@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "incomplete-provider-output",
+  "model": "qwen3.7-plus",
+  "signals": [],
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0
+  },
+  "latencyMs": 152523
+}

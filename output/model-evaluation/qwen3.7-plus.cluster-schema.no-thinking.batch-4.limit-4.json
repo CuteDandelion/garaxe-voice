@@ -1,0 +1,108 @@
+{
+  "evaluation": "production-cluster-schema-no-thinking-v1",
+  "analysisRunId": "ccae3953-41c9-4656-80d3-e68af36237d5",
+  "analysisRunCreatedAt": "2026-07-13T15:01:45.644Z",
+  "evaluatedAt": "2026-07-13T15:02:13.164Z",
+  "model": "qwen3.7-plus",
+  "enableThinking": false,
+  "evaluationBatchSize": 4,
+  "themeLimit": 4,
+  "promptVersion": "root-cause-first-v7-compact",
+  "schemaVersion": "cluster-interpretation-v3",
+  "batches": {
+    "total": 1,
+    "completed": 1
+  },
+  "candidates": {
+    "expected": 4,
+    "accepted": 4,
+    "rejected": 0,
+    "acceptanceRate": 1,
+    "rejectionReasons": {}
+  },
+  "performance": {
+    "totalLatencyMs": 27503,
+    "averageBatchLatencyMs": 27503,
+    "p50BatchLatencyMs": 27503,
+    "p95BatchLatencyMs": 27503,
+    "inputTokens": 2151,
+    "outputTokens": 1441,
+    "totalTokens": 3592
+  },
+  "batchResults": [
+    {
+      "batch": 1,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 27503,
+      "finishReason": "stop"
+    }
+  ],
+  "candidateSummaries": [
+    {
+      "themeId": "ccae3953-41c9-4656-80d3-e68af36237d5:theme:pain_point:wy78ii",
+      "label": "Game freeze causes missed actions",
+      "aspect": "Performance stability",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Game freezes when multiple effects appear in central zone",
+      "consequence": "Player misses actions unintentionally",
+      "confidence": 1,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "ccae3953-41c9-4656-80d3-e68af36237d5:theme:praise:7cbekm",
+      "label": "Accessible settings enable independent play",
+      "aspect": "Accessibility features",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Menu allows resizing subtitles, reducing flashes, remapping actions",
+      "consequence": "Play comfortably without external assistance",
+      "confidence": 1,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "ccae3953-41c9-4656-80d3-e68af36237d5:theme:pain_point:1imeqs",
+      "label": "Delayed currency delivery after purchase",
+      "aspect": "Transaction processing",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue",
+        "emotion"
+      ],
+      "rootCause": "Purchased currency charged immediately but delayed delivery",
+      "consequence": "Worry that payment was lost",
+      "confidence": 1,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "ccae3953-41c9-4656-80d3-e68af36237d5:theme:praise:ykrvyv",
+      "label": "Flexible seasonal challenge design",
+      "aspect": "Game progression",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Seasonal challenges reward experimentation without forcing daily logins",
+      "consequence": "Can return on weekends without falling behind",
+      "confidence": 1,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    }
+  ]
+}

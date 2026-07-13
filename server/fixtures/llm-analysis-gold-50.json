@@ -1,0 +1,915 @@
+{
+  "schemaVersion": "garaxe-llm-eval-fixture-v1",
+  "description": "Fifty synthetic English customer reviews balanced across pain points, desired outcomes, objections, and emotional triggers. Every gold signal contains an exact source span.",
+  "taxonomy": {
+    "signalTypes": [
+      "pain_point",
+      "desired_outcome",
+      "objection",
+      "emotion"
+    ],
+    "matchingRule": "reviewId + signalType + label"
+  },
+  "reviews": [
+    {
+      "id": "gold-01",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-01-01T12:00:00.000Z",
+      "text": "Setup took three days before the team could begin.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "setup_complexity",
+          "quoteText": "Setup took three days",
+          "quoteStart": 0,
+          "quoteEnd": 21
+        }
+      ]
+    },
+    {
+      "id": "gold-02",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-02-02T12:00:00.000Z",
+      "text": "The service was painfully slow during our evening visit.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "slow_service",
+          "quoteText": "The service was painfully slow",
+          "quoteStart": 0,
+          "quoteEnd": 30
+        }
+      ]
+    },
+    {
+      "id": "gold-03",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-03-03T12:00:00.000Z",
+      "text": "Support never replied even after two follow-up messages.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "support_delay",
+          "quoteText": "Support never replied",
+          "quoteStart": 0,
+          "quoteEnd": 21
+        }
+      ]
+    },
+    {
+      "id": "gold-04",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-04-04T12:00:00.000Z",
+      "text": "It crashes every morning and interrupts our daily work.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "reliability",
+          "quoteText": "It crashes every morning",
+          "quoteStart": 0,
+          "quoteEnd": 24
+        }
+      ]
+    },
+    {
+      "id": "gold-05",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-05-05T12:00:00.000Z",
+      "text": "The instructions sent me in circles when I tried the first setup.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "unclear_documentation",
+          "quoteText": "The instructions sent me in circles",
+          "quoteStart": 0,
+          "quoteEnd": 35
+        }
+      ]
+    },
+    {
+      "id": "gold-06",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-06-06T12:00:00.000Z",
+      "text": "The final bill felt much too high for what was delivered.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "price_value",
+          "quoteText": "The final bill felt much too high",
+          "quoteStart": 0,
+          "quoteEnd": 33
+        }
+      ]
+    },
+    {
+      "id": "gold-07",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-01-07T12:00:00.000Z",
+      "text": "We waited almost an hour before anyone took our order.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "waiting_time",
+          "quoteText": "We waited almost an hour",
+          "quoteStart": 0,
+          "quoteEnd": 24
+        }
+      ]
+    },
+    {
+      "id": "gold-08",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-02-08T12:00:00.000Z",
+      "text": "The staff made us feel unwelcome despite the quiet room.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "staff_friendliness",
+          "quoteText": "The staff made us feel unwelcome",
+          "quoteStart": 0,
+          "quoteEnd": 32
+        }
+      ]
+    },
+    {
+      "id": "gold-09",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-03-09T12:00:00.000Z",
+      "text": "Delivery arrived four days late and the event had already passed.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "delivery_delay",
+          "quoteText": "Delivery arrived four days late",
+          "quoteStart": 0,
+          "quoteEnd": 31
+        }
+      ]
+    },
+    {
+      "id": "gold-10",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-04-10T12:00:00.000Z",
+      "text": "The dashboard is confusing to navigate for new team members.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "usability",
+          "quoteText": "The dashboard is confusing to navigate",
+          "quoteStart": 0,
+          "quoteEnd": 38
+        }
+      ]
+    },
+    {
+      "id": "gold-11",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-05-11T12:00:00.000Z",
+      "text": "Our saved settings disappeared twice after routine updates.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "data_reliability",
+          "quoteText": "Our saved settings disappeared twice",
+          "quoteStart": 0,
+          "quoteEnd": 36
+        }
+      ]
+    },
+    {
+      "id": "gold-12",
+      "provider": "trustpilot",
+      "entity": "Kreuzberg",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-06-12T12:00:00.000Z",
+      "text": "Booking by phone was impossible because the line kept dropping.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "booking_friction",
+          "quoteText": "Booking by phone was impossible",
+          "quoteStart": 0,
+          "quoteEnd": 31
+        }
+      ]
+    },
+    {
+      "id": "gold-13",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-01-13T12:00:00.000Z",
+      "text": "The room was not properly cleaned when we checked in.",
+      "expectedSignals": [
+        {
+          "signalType": "pain_point",
+          "label": "cleanliness",
+          "quoteText": "The room was not properly cleaned",
+          "quoteStart": 0,
+          "quoteEnd": 33
+        }
+      ]
+    },
+    {
+      "id": "gold-14",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-02-14T12:00:00.000Z",
+      "text": "I need setup to take minutes so a small team can start immediately.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "easy_setup",
+          "quoteText": "I need setup to take minutes",
+          "quoteStart": 0,
+          "quoteEnd": 28
+        }
+      ]
+    },
+    {
+      "id": "gold-15",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-03-15T12:00:00.000Z",
+      "text": "We want service that arrives on time without repeated status calls.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "dependable_service",
+          "quoteText": "We want service that arrives on time",
+          "quoteStart": 0,
+          "quoteEnd": 36
+        }
+      ]
+    },
+    {
+      "id": "gold-16",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-04-16T12:00:00.000Z",
+      "text": "I want support to answer the same day when a client project is blocked.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "quick_support",
+          "quoteText": "I want support to answer the same day",
+          "quoteStart": 0,
+          "quoteEnd": 37
+        }
+      ]
+    },
+    {
+      "id": "gold-17",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-05-17T12:00:00.000Z",
+      "text": "We need a tool that works every morning without an engineer watching it.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "reliable_tool",
+          "quoteText": "We need a tool that works every morning",
+          "quoteStart": 0,
+          "quoteEnd": 39
+        }
+      ]
+    },
+    {
+      "id": "gold-18",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-06-18T12:00:00.000Z",
+      "text": "I want instructions I can follow once and then work independently.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "clear_documentation",
+          "quoteText": "I want instructions I can follow once",
+          "quoteStart": 0,
+          "quoteEnd": 37
+        }
+      ]
+    },
+    {
+      "id": "gold-19",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-01-19T12:00:00.000Z",
+      "text": "We are looking for peace of mind during our busiest season.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "peace_of_mind",
+          "quoteText": "We are looking for peace of mind",
+          "quoteStart": 0,
+          "quoteEnd": 32
+        }
+      ]
+    },
+    {
+      "id": "gold-20",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-02-20T12:00:00.000Z",
+      "text": "I want a clear wait-time estimate before deciding whether to stay.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "wait_time_visibility",
+          "quoteText": "I want a clear wait-time estimate",
+          "quoteStart": 0,
+          "quoteEnd": 33
+        }
+      ]
+    },
+    {
+      "id": "gold-21",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-03-21T12:00:00.000Z",
+      "text": "We need consistent service at every branch for traveling team members.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "location_consistency",
+          "quoteText": "We need consistent service at every branch",
+          "quoteStart": 0,
+          "quoteEnd": 42
+        }
+      ]
+    },
+    {
+      "id": "gold-22",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-04-22T12:00:00.000Z",
+      "text": "I want pricing that is easy to understand before entering payment details.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "transparent_pricing",
+          "quoteText": "I want pricing that is easy to understand",
+          "quoteStart": 0,
+          "quoteEnd": 41
+        }
+      ]
+    },
+    {
+      "id": "gold-23",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-05-23T12:00:00.000Z",
+      "text": "We need our whole team to adopt it without weeks of training.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "team_adoption",
+          "quoteText": "We need our whole team to adopt it",
+          "quoteStart": 0,
+          "quoteEnd": 34
+        }
+      ]
+    },
+    {
+      "id": "gold-24",
+      "provider": "trustpilot",
+      "entity": "Kreuzberg",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-06-24T12:00:00.000Z",
+      "text": "I want a reply that solves the issue rather than another generic template.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "effective_support",
+          "quoteText": "I want a reply that solves the issue",
+          "quoteStart": 0,
+          "quoteEnd": 36
+        }
+      ]
+    },
+    {
+      "id": "gold-25",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-01-25T12:00:00.000Z",
+      "text": "We need delivery before the promised date for scheduled customer launches.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "on_time_delivery",
+          "quoteText": "We need delivery before the promised date",
+          "quoteStart": 0,
+          "quoteEnd": 41
+        }
+      ]
+    },
+    {
+      "id": "gold-26",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-02-26T12:00:00.000Z",
+      "text": "I want the first visit to feel welcoming from arrival through checkout.",
+      "expectedSignals": [
+        {
+          "signalType": "desired_outcome",
+          "label": "welcoming_experience",
+          "quoteText": "I want the first visit to feel welcoming",
+          "quoteStart": 0,
+          "quoteEnd": 40
+        }
+      ]
+    },
+    {
+      "id": "gold-27",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-03-27T12:00:00.000Z",
+      "text": "The annual price is hard to justify before we see measurable results.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "price_too_high",
+          "quoteText": "The annual price is hard to justify",
+          "quoteStart": 0,
+          "quoteEnd": 35
+        }
+      ]
+    },
+    {
+      "id": "gold-28",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-04-01T12:00:00.000Z",
+      "text": "I am not sure it fits our niche because our workflow is unusual.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "niche_fit",
+          "quoteText": "I am not sure it fits our niche",
+          "quoteStart": 0,
+          "quoteEnd": 31
+        }
+      ]
+    },
+    {
+      "id": "gold-29",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-05-02T12:00:00.000Z",
+      "text": "Moving all our records feels risky without a reversible import.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "migration_risk",
+          "quoteText": "Moving all our records feels risky",
+          "quoteStart": 0,
+          "quoteEnd": 34
+        }
+      ]
+    },
+    {
+      "id": "gold-30",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-06-03T12:00:00.000Z",
+      "text": "The learning curve may be too steep for colleagues with limited time.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "learning_curve",
+          "quoteText": "The learning curve may be too steep",
+          "quoteStart": 0,
+          "quoteEnd": 35
+        }
+      ]
+    },
+    {
+      "id": "gold-31",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-01-04T12:00:00.000Z",
+      "text": "A twelve-month contract feels restrictive while we are still evaluating.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "contract_commitment",
+          "quoteText": "A twelve-month contract feels restrictive",
+          "quoteStart": 0,
+          "quoteEnd": 41
+        }
+      ]
+    },
+    {
+      "id": "gold-32",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-02-05T12:00:00.000Z",
+      "text": "I worry about where customer data is stored and who can access it.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "data_security",
+          "quoteText": "I worry about where customer data is stored",
+          "quoteStart": 0,
+          "quoteEnd": 43
+        }
+      ]
+    },
+    {
+      "id": "gold-33",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-03-06T12:00:00.000Z",
+      "text": "There are too few recent reviews for me to trust the advertised results.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "social_proof",
+          "quoteText": "There are too few recent reviews",
+          "quoteStart": 0,
+          "quoteEnd": 32
+        }
+      ]
+    },
+    {
+      "id": "gold-34",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-04-07T12:00:00.000Z",
+      "text": "I cannot tell what the base plan includes compared with the upgrades.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "plan_clarity",
+          "quoteText": "I cannot tell what the base plan includes",
+          "quoteStart": 0,
+          "quoteEnd": 41
+        }
+      ]
+    },
+    {
+      "id": "gold-35",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-05-08T12:00:00.000Z",
+      "text": "It may not integrate with our current tools and duplicate work would be costly.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "integration_fit",
+          "quoteText": "It may not integrate with our current tools",
+          "quoteStart": 0,
+          "quoteEnd": 43
+        }
+      ]
+    },
+    {
+      "id": "gold-36",
+      "provider": "trustpilot",
+      "entity": "Kreuzberg",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-06-09T12:00:00.000Z",
+      "text": "I am unsure the small team can support us if our usage grows quickly.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "vendor_capacity",
+          "quoteText": "I am unsure the small team can support us",
+          "quoteStart": 0,
+          "quoteEnd": 41
+        }
+      ]
+    },
+    {
+      "id": "gold-37",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-01-10T12:00:00.000Z",
+      "text": "The cancellation process looks complicated which makes a trial feel risky.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "cancellation_friction",
+          "quoteText": "The cancellation process looks complicated",
+          "quoteStart": 0,
+          "quoteEnd": 42
+        }
+      ]
+    },
+    {
+      "id": "gold-38",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-02-11T12:00:00.000Z",
+      "text": "I need proof it works across locations before involving every branch.",
+      "expectedSignals": [
+        {
+          "signalType": "objection",
+          "label": "multi_location_proof",
+          "quoteText": "I need proof it works across locations",
+          "quoteStart": 0,
+          "quoteEnd": 38
+        }
+      ]
+    },
+    {
+      "id": "gold-39",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-03-12T12:00:00.000Z",
+      "text": "I felt completely frustrated after repeating the same setup four times.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "frustration",
+          "quoteText": "I felt completely frustrated",
+          "quoteStart": 0,
+          "quoteEnd": 28
+        }
+      ]
+    },
+    {
+      "id": "gold-40",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-04-13T12:00:00.000Z",
+      "text": "I was relieved when it finally worked without another support call.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "relief",
+          "quoteText": "I was relieved when it finally worked",
+          "quoteStart": 0,
+          "quoteEnd": 37
+        }
+      ]
+    },
+    {
+      "id": "gold-41",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 3,
+      "language": "en",
+      "createdAt": "2026-05-14T12:00:00.000Z",
+      "text": "I still feel doubtful because the result varies by location.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "doubt",
+          "quoteText": "I still feel doubtful",
+          "quoteStart": 0,
+          "quoteEnd": 21
+        }
+      ]
+    },
+    {
+      "id": "gold-42",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-06-15T12:00:00.000Z",
+      "text": "I feel confident recommending it after six reliable months.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "confidence",
+          "quoteText": "I feel confident recommending it",
+          "quoteStart": 0,
+          "quoteEnd": 32
+        }
+      ]
+    },
+    {
+      "id": "gold-43",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-01-16T12:00:00.000Z",
+      "text": "We left deeply disappointed after the promised fix never arrived.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "disappointment",
+          "quoteText": "We left deeply disappointed",
+          "quoteStart": 0,
+          "quoteEnd": 27
+        }
+      ]
+    },
+    {
+      "id": "gold-44",
+      "provider": "csv_import",
+      "entity": "Kreuzberg",
+      "rating": 4,
+      "language": "en",
+      "createdAt": "2026-02-17T12:00:00.000Z",
+      "text": "I am hopeful the new process will help once every employee is trained.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "hope",
+          "quoteText": "I am hopeful the new process will help",
+          "quoteStart": 0,
+          "quoteEnd": 38
+        }
+      ]
+    },
+    {
+      "id": "gold-45",
+      "provider": "trustpilot",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-03-18T12:00:00.000Z",
+      "text": "The delays left me exhausted before the appointment even began.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "exhaustion",
+          "quoteText": "The delays left me exhausted",
+          "quoteStart": 0,
+          "quoteEnd": 28
+        }
+      ]
+    },
+    {
+      "id": "gold-46",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-04-19T12:00:00.000Z",
+      "text": "The clear explanation reassured me when I questioned the invoice.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "reassurance",
+          "quoteText": "The clear explanation reassured me",
+          "quoteStart": 0,
+          "quoteEnd": 34
+        }
+      ]
+    },
+    {
+      "id": "gold-47",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 1,
+      "language": "en",
+      "createdAt": "2026-05-20T12:00:00.000Z",
+      "text": "I felt ignored at the counter while staff spoke with each other.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "feeling_ignored",
+          "quoteText": "I felt ignored at the counter",
+          "quoteStart": 0,
+          "quoteEnd": 29
+        }
+      ]
+    },
+    {
+      "id": "gold-48",
+      "provider": "trustpilot",
+      "entity": "Kreuzberg",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-06-21T12:00:00.000Z",
+      "text": "The quick recovery restored my trust after an early mistake.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "restored_trust",
+          "quoteText": "The quick recovery restored my trust",
+          "quoteStart": 0,
+          "quoteEnd": 36
+        }
+      ]
+    },
+    {
+      "id": "gold-49",
+      "provider": "google_business",
+      "entity": "Berlin Mitte",
+      "rating": 2,
+      "language": "en",
+      "createdAt": "2026-01-22T12:00:00.000Z",
+      "text": "I felt overwhelmed by all the options on the first configuration screen.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "overwhelm",
+          "quoteText": "I felt overwhelmed by all the options",
+          "quoteStart": 0,
+          "quoteEnd": 37
+        }
+      ]
+    },
+    {
+      "id": "gold-50",
+      "provider": "csv_import",
+      "entity": "Berlin Mitte",
+      "rating": 5,
+      "language": "en",
+      "createdAt": "2026-02-23T12:00:00.000Z",
+      "text": "The friendly welcome made me comfortable during an otherwise stressful day.",
+      "expectedSignals": [
+        {
+          "signalType": "emotion",
+          "label": "comfort",
+          "quoteText": "The friendly welcome made me comfortable",
+          "quoteStart": 0,
+          "quoteEnd": 40
+        }
+      ]
+    }
+  ]
+}

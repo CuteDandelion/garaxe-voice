@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/
+dist/
+.qa/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.local/
+tmp/
+.codebase-memory/
+output/pdf/
+.env
+.env.*
+!.env.example

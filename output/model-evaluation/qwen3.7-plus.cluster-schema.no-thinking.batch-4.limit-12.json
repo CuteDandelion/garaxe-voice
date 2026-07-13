@@ -1,0 +1,249 @@
+{
+  "evaluation": "production-cluster-schema-no-thinking-v1",
+  "analysisRunId": "7cedc9e0-6460-4781-8455-7c91abbd6e47",
+  "analysisRunCreatedAt": "2026-07-13T14:51:05.951Z",
+  "evaluatedAt": "2026-07-13T14:52:11.374Z",
+  "model": "qwen3.7-plus",
+  "enableThinking": false,
+  "evaluationBatchSize": 4,
+  "themeLimit": 12,
+  "promptVersion": "root-cause-first-v7-compact",
+  "schemaVersion": "cluster-interpretation-v3",
+  "batches": {
+    "total": 3,
+    "completed": 3
+  },
+  "candidates": {
+    "expected": 12,
+    "accepted": 12,
+    "rejected": 0,
+    "acceptanceRate": 1,
+    "rejectionReasons": {}
+  },
+  "performance": {
+    "totalLatencyMs": 65414,
+    "averageBatchLatencyMs": 21805,
+    "p50BatchLatencyMs": 21567,
+    "p95BatchLatencyMs": 24598,
+    "inputTokens": 6902,
+    "outputTokens": 3360,
+    "totalTokens": 10262
+  },
+  "batchResults": [
+    {
+      "batch": 1,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 21567,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 2,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 19249,
+      "finishReason": "stop"
+    },
+    {
+      "batch": 3,
+      "expectedCandidates": 4,
+      "acceptedCandidates": 4,
+      "rejectedCandidates": 0,
+      "rejectionReasons": [],
+      "latencyMs": 24598,
+      "finishReason": "stop"
+    }
+  ],
+  "candidateSummaries": [
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:pain_point:wy78ii",
+      "label": "Game freezes cause missed actions",
+      "aspect": "Performance stability",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Game freezes when multiple effects appear in central zone",
+      "consequence": "Player misses actions despite no user error",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:praise:7cbekm",
+      "label": "Accessible settings enable independent play",
+      "aspect": "Accessibility features",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Menu allows resizing subtitles, reducing flashes, remapping actions",
+      "consequence": "Play comfortably without external assistance",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:pain_point:1imeqs",
+      "label": "Delayed currency delivery after purchase",
+      "aspect": "Transaction processing",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue",
+        "emotion"
+      ],
+      "rootCause": "Purchased currency charged but not delivered immediately",
+      "consequence": "Customer worries payment was lost",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:praise:ykrvyv",
+      "label": "Challenges reward experimentation flexibly",
+      "aspect": "Seasonal challenge design",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Seasonal challenges reward experimentation without forcing daily logins",
+      "consequence": "Can return on weekends without falling behind",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:pain_point:hzi3t2",
+      "label": "Missing item return dates",
+      "aspect": "Store UI transparency",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "objection"
+      ],
+      "rootCause": "Store lacks visibility on cosmetic bundle return schedules",
+      "consequence": "Artificial urgency causes purchase hesitation",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:praise:1f2c6p1",
+      "label": "Preserved co-op settings",
+      "aspect": "Local co-op convenience",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Co-op preserves individual control and camera settings",
+      "consequence": null,
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": false
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:pain_point:t4i5uy",
+      "label": "Missing armor penetration tutorial",
+      "aspect": "Tutorial completeness",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain"
+      ],
+      "rootCause": "Tutorial omits armor penetration mechanics explanation",
+      "consequence": "Initial armored encounters feel confusing",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:praise:lk2wov",
+      "label": "Flexible seasonal challenge pacing",
+      "aspect": "Challenge schedule flexibility",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Seasonal challenges do not force daily logins",
+      "consequence": "Players can return weekends without falling behind",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:pain_point:fj2smn",
+      "label": "Unfair matchmaking pairs",
+      "aspect": "Matchmaking balance",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Matchmaking places new squads against coordinated high-rank teams.",
+      "consequence": "Friends stop queuing after one-sided matches.",
+      "confidence": 0.95,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:praise:10kl9pi",
+      "label": "Tense hard mode design",
+      "aspect": "Difficulty balance",
+      "evaluation": "praise",
+      "signalTypes": [
+        "praise"
+      ],
+      "rootCause": "Hard mode maintains tension without excessive enemy health.",
+      "consequence": null,
+      "confidence": 0.98,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": false
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:product_aspect:fj2smn",
+      "label": "Confusing UI navigation",
+      "aspect": "User interface",
+      "evaluation": "pain",
+      "signalTypes": [
+        "pain",
+        "operational_issue"
+      ],
+      "rootCause": "Crafting screen hides materials behind nested tabs.",
+      "consequence": "Players spend more time searching menus than planning.",
+      "confidence": 0.92,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": true,
+      "hasConsequenceEvidence": true
+    },
+    {
+      "themeId": "7cedc9e0-6460-4781-8455-7c91abbd6e47:theme:praise:1xc8725",
+      "label": "Fresh account experience",
+      "aspect": "Onboarding context",
+      "evaluation": "mixed",
+      "signalTypes": [
+        "operational_issue"
+      ],
+      "rootCause": null,
+      "consequence": null,
+      "confidence": 0.5,
+      "evidenceCount": 1,
+      "hasRootCauseEvidence": false,
+      "hasConsequenceEvidence": false
+    }
+  ]
+}

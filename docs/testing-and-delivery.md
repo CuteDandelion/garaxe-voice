@@ -20,7 +20,7 @@ Separate connector tests from analysis fixtures. Google staging requires a real 
 
 ## Local gates and automation status
 
-The repository wires `npm run typecheck`, `npm test`, `npm run build`, `npm run build:server`, `npm audit`, Kubernetes rendering, and `./scripts/check-docs-sync.sh` into `.github/workflows/ci.yml`. The separate publication workflow builds Linux/amd64 web/API images and publishes only commit-SHA tags to GHCR on `main` or explicit dispatch.
+The repository wires `npm run typecheck`, `npm test`, `npm run build`, `npm run build:server`, `npm audit`, Kubernetes rendering, and `./scripts/check-docs-sync.sh` into `.github/workflows/ci.yml`. CI provisions Python 3.11 and installs the pinned report-renderer requirements before integration tests so PDF coverage exercises the real renderer rather than relying on runner-global packages. The separate publication workflow builds Linux/amd64 web/API images and publishes only commit-SHA tags to GHCR on `main` or explicit dispatch.
 
 As of this repository change, the workflows exist but must still be exercised successfully on GitHub before they count as live release evidence. There is still no lint/format script, merge-blocking browser E2E, scheduled provider smoke test, or automated complete-diff gate. The production image build also audits its smaller runtime-only dependency installation separately.
 

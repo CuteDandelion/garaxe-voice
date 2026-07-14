@@ -59,6 +59,29 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: initialize-data-ownership
+          image: postgres@sha256:ef463f9f754e6d381d27513b032ace3607532c752427423d344e9fbfd852257a
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "install -d -o 999 -g 999 -m 0700 /var/lib/postgresql/data/pgdata"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
       containers:
         - name: postgres
           image: postgres@sha256:ef463f9f754e6d381d27513b032ace3607532c752427423d344e9fbfd852257a

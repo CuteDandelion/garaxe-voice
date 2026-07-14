@@ -1,7 +1,7 @@
 # Product Specification
 
 Status: Baseline approved from supplied product conversation
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Product promise
 
@@ -88,11 +88,11 @@ Implemented on 2026-07-12:
 - React/Vite application shell derived from the governed dashboard reference.
 - Responsive project rail, global bar, analysis tabs, editorial conclusion, primary-pain evidence, journey, recommended moves, and supporting-signal rail.
 - Typed fixture model standing in for the future normalized analysis response.
-- Functional evidence drawer, mobile project navigation, active section state, and JSON Voice Map export.
-- Unit tests for evidence, navigation, and export interactions.
+- Functional evidence drawer, mobile project navigation, active section state, and the original JSON Voice Map export.
+- Unit tests for evidence, navigation, and the original export interaction.
 - Browser verification at the 1536x1024 reference viewport and a 390x844 mobile target.
 
-At the conclusion of Slice 1, authentication/tenant isolation, provider OAuth, and managed PostgreSQL deployment remained open. Authentication, OAuth, and the managed database adapter were subsequently delivered in Slices 13–15; live managed deployment remains an external release gate.
+At the conclusion of Slice 1, authentication/tenant isolation, provider OAuth, and managed PostgreSQL deployment remained open. Authentication, OAuth, and the managed database adapter were subsequently delivered in Slices 13–15; live managed deployment remains an external release gate. Slice 12 and the current application supersede the fixture JSON download: **Export Voice Map** now routes to immutable Reports, and application coverage asserts that route.
 
 ### Slice 2 — Project and CSV ingestion
 
@@ -122,7 +122,7 @@ Implemented on 2026-07-12:
 - Frontend job polling and server-derived completion counts.
 - Real API integration tests and full-stack browser verification.
 
-Authentication, organization isolation, RLS, upload size limits, malware scanning, durable multi-process queues, managed PostgreSQL, and backup/restore remain production work.
+At the conclusion of Slice 3, authentication, organization isolation, RLS, request/upload limits, malware scanning, durable multi-process queues, managed PostgreSQL, and backup/restore remained production work. Later slices delivered application authorization, organization isolation, the forced-RLS migration, bounded request bodies, and the managed-PostgreSQL adapter. Live managed deployment, file-specific validation/malware controls, durable external workers, and backup/restore operations remain paid-beta gates.
 
 ### Slice 4 — Persisted review inventory
 
@@ -168,7 +168,7 @@ Implemented on 2026-07-12:
 - Live Investigate mode with ranked themes, confidence, contradiction, breakdowns, and exact-evidence drawer.
 - Full-stack proof from CSV import through run creation, signal/theme persistence, Read/Investigate navigation, and exact quote-to-original substring verification.
 
-Current extraction vocabulary is intentionally conservative and English-first. Unsupported languages remain visible in quality and membership reporting but do not receive fabricated interpretation. Optional model-based enrichment remains a future adapter rather than a core dependency.
+At delivery of Slices 7–9, extraction vocabulary was intentionally conservative and English-first, unsupported languages remained visible without fabricated interpretation, and optional model-based enrichment was still a future adapter.
 
 Superseded on 2026-07-13 by Slice 18: production analysis no longer uses the governed keyword vocabulary or frequency rules as its theme source. Those modules remain only as historical regression fixtures while existing immutable runs retain their recorded versions.
 
@@ -258,7 +258,7 @@ Implemented on 2026-07-13:
 
 Implemented on 2026-07-13:
 
-- Production analysis uses exact-offset sentence/clause segmentation, pinned `Xenova/multilingual-e5-small` ONNX q8 embeddings, deterministic spherical clustering, and dataset-derived c-TF-IDF-style cluster representation.
+- At delivery, production analysis used exact-offset sentence/clause segmentation, pinned `Xenova/multilingual-e5-small` ONNX q8 embeddings, deterministic spherical clustering, and dataset-derived c-TF-IDF-style cluster representation. Slice 24 subsequently replaced spherical assignment with the current polarity-specific mutual-KNN community graph, coherence gates, and explicit outliers; the remaining segmentation, embedding, and representation boundaries still apply.
 - The run records model ID, immutable model revision, dtype, dimensions, segment count, cluster count, pipeline version, confidence, and the existing immutable review/signal/evidence relationships.
 - Keyword/rule extraction is no longer called by the production run. Rules are reserved for preprocessing, deduplication, safety/negation validation, exact-span integrity, and evidence publication thresholds.
 - Rating provides only the phase-one polarity/type prior. A later SetFit multi-label classifier may add pain, desired outcome, objection, praise, purchase trigger, operational issue, and emotion labels only after real analyst-curated training and benchmark approval.

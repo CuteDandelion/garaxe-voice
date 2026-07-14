@@ -1,7 +1,7 @@
 # Data and API Contracts
 
-Status: Proposed baseline
-Last updated: 2026-07-13
+Status: Implemented local MVP contracts with an explicitly labelled production target
+Last updated: 2026-07-14
 
 ## Data layers
 
@@ -10,9 +10,18 @@ Last updated: 2026-07-13
 3. Derived analysis: dataset membership, signals, themes, evidence, insights.
 4. Presentation: curation and immutable report snapshots.
 
-## Minimum relational model
+## Implemented relational model
 
-`organizations`, `users`, `organization_members`, `projects`, `connections`, `review_entities`, `review_source_records`, `reviews`, `analysis_runs`, `analysis_run_reviews`, `review_signals`, `themes`, `theme_evidence`, `insights`, `insight_themes`, `theme_overrides`, `reports`, `audit_events`.
+The current schema is composed from the application-owned schema modules and contains:
+
+- identity and tenancy: `auth_users`, `organizations`, `organization_memberships`, `project_organizations`, `auth_sessions`;
+- ingestion and review core: `projects`, `import_jobs`, `review_source_records`, `reviews`;
+- analysis, curation, and reporting: `analysis_runs`, `analysis_run_reviews`, `review_signals`, `themes`, `theme_evidence`, `voice_maps`, `curation_sessions`, `curation_actions`, `reports`;
+- Google acquisition: `google_oauth_states`, `google_business_connections`, `google_business_entities`, `google_sync_job_entities`;
+- tenant-aware LLM operations: `llm_jobs`, `llm_attempts`, `llm_budget_accounts`, `llm_budget_ledger`;
+- deployment-owned LLM control plane: `llm_rate_buckets`, `llm_concurrency_limits`, `llm_provider_health`.
+
+This is the implemented local and managed-PostgreSQL model. Earlier proposed entities such as separate `connections`, `review_entities`, `insights`, `insight_themes`, `theme_overrides`, and `audit_events` are not current tables; their responsibilities are represented by provider-specific connector tables, immutable `voice_maps`, the curation event stream, report snapshots, and operational records. Add any future table only through a governed schema and migration change.
 
 Use JSONB for raw payloads, provider-specific metadata, rare attributes, run configuration, and snapshot bodies. Promote fields to typed columns when they are frequently filtered, grouped, sorted, joined, constrained, or indexed.
 
@@ -46,28 +55,37 @@ The implemented worker runtime receives provider request construction, candidate
 
 When verified-price spend enforcement is enabled, budget policy and ledger amounts use integer micros. A dispatch transaction reserves a configured worst-case amount at global, organization, project, and run scopes; completion reconciles actual provider usage and releases the remainder. Unverified usage consumes the full reservation, and configured limits are deny-by-default when they cannot be evaluated. A zero requested reservation explicitly means capacity-priced/unmetered dispatch: it creates no budget account or ledger mutation but still requires request/token bucket and concurrency admission.
 
-## Canonical review
+## Canonical review boundaries
+
+“Canonical review” names two related shapes at different boundaries; they must not be treated as one storage schema.
+
+### Google connector DTO
+
+The provider-normalized Google connector output uses application casing and still carries the raw provider payload for provenance at the connector/import boundary:
 
 ```json
 {
-  "id": "rev_...",
   "provider": "google_business",
-  "external_review_id": "...",
-  "connection_id": "conn_...",
-  "entity_id": "entity_...",
-  "rating_value": 4,
-  "rating_scale": 5,
+  "externalReviewId": "...",
+  "entityExternalId": "...",
+  "ratingValue": 4,
+  "ratingScale": 5,
   "title": null,
-  "body_original": "...",
-  "body_normalized": "...",
-  "language": "en",
-  "source_created_at": "2026-06-12T18:30:00Z",
-  "source_updated_at": "2026-06-12T18:30:00Z",
-  "reply_body": null,
-  "flags": {"rating_only": false, "deleted": false},
-  "metadata": {}
+  "bodyOriginal": "...",
+  "language": null,
+  "sourceCreatedAt": "2026-06-12T18:30:00Z",
+  "sourceUpdatedAt": "2026-06-12T18:30:00Z",
+  "replyBody": null,
+  "replyUpdatedAt": null,
+  "flags": {"ratingOnly": false, "deleted": false},
+  "metadata": {"reviewerDisplayName": null, "reviewerProfilePhotoUrl": null},
+  "rawPayload": {}
 }
 ```
+
+### Persisted canonical review
+
+The `reviews` table stores the normalized cross-provider record: `id`, `project_id`, `source_record_id`, optional `external_review_id`, `provider`, `entity_name`, rating value/scale, title, immutable `body_original`, language, reviewer name, owner reply, source URL/time, `is_rating_only`, `canonical_hash`, metadata, and import time. The exact source row or provider payload and its hash remain in `review_source_records`; normalized analysis text belongs to the versioned `analysis_run_reviews` membership record rather than overwriting the review. The current table does not persist connector-only `sourceUpdatedAt`, `replyUpdatedAt`, or a deleted flag as first-class columns.
 
 ## Customer-facing import shape
 
@@ -95,7 +113,9 @@ interface ReviewProviderConnector {
 
 Capabilities explicitly describe full-text access, replies, pagination, incremental sync, refresh, and write access. OAuth success alone is not connector success.
 
-## API resources
+## Production `/v1` API target (not yet implemented)
+
+The following inventory is the aspirational production resource shape. It is not a statement that these `/v1` routes exist in the current Node API; the implemented routes are documented in the sections below.
 
 - `POST /v1/connections`; `GET /v1/connections/:id/callback`; `POST /v1/connections/:id/test`; `DELETE /v1/connections/:id`
 - `GET /v1/connections/:id/entities`
@@ -130,7 +150,7 @@ These routes are local MVP contracts and now require organization authorization.
 - `GET /api/projects/:id/analysis-runs` returns immutable run history.
 - `GET /api/analysis-runs/:id/reviews` returns bounded dataset membership and accepts `inclusion_status`, `reason`, and `limit`.
 
-The implemented membership record stores `review_id`, inclusion status, exclusion reason, normalized text, and preprocessing version while retaining the original review as the source of truth. Production authorization must scope every route to the authenticated organization/project.
+The implemented membership record stores `review_id`, inclusion status, exclusion reason, normalized text, and preprocessing version while retaining the original review as the source of truth. Every implemented analysis route authenticates the session and authorizes the associated project or analysis run; mutation routes additionally enforce owner, admin, or analyst roles.
 
 ### Implemented local MVP evidence and Voice Map API
 
@@ -163,7 +183,7 @@ Creating another report never updates an existing report row. The snapshot JSON 
 - All remaining `/api` resources require a cookie or strict Bearer session and resolve ownership through project -> organization membership.
 - Session rows store token hashes, expiry, revocation, and last-seen time; plaintext session tokens are never persisted.
 
-The compatibility table `project_organizations` avoids a destructive local migration. The managed deployment should promote `organization_id` onto tenant-owned tables and add RLS after migration rehearsal.
+The compatibility table `project_organizations` avoids a destructive local migration while providing the project-to-organization ownership join used by application authorization. The managed migration already enables and forces RLS on all 22 tenant-owned tables using the authenticated transaction-local user context. Live migration rehearsal and verification under the intended non-owner application role remain paid-beta gates; a future direct `organization_id` migration is an optional simplification, not a prerequisite for current authorization.
 
 ### Google Business Profile connector boundary
 
@@ -190,6 +210,20 @@ Upload imports send normalized CSV for mapping plus an `originalSource` envelope
 Supported actions are `approve_theme`, `reject_theme`, `edit_theme`, `pin_evidence`, `exclude_evidence`, `merge_themes`, `split_theme`, and `mark_ready`. IDs are validated against the session's analysis run, split evidence groups cannot overlap, and a ready session is immutable. These routes require an authorized owner, admin, or analyst for mutation.
 
 ## Error envelope
+
+### Implemented local API
+
+Most current errors return only stable `code` and safe `message` fields:
+
+```json
+{"error":{"code":"CONNECTION_PERMISSION_DENIED","message":"..."}}
+```
+
+Validated analysis-configuration failures may additionally include a bounded `details.reason`, and Google connector rate-limit errors may include `retryAfterSeconds`. The current server does not generate or return `request_id`.
+
+### Production target
+
+The production `/v1` target adds a request correlation identifier and may add bounded safe details:
 
 ```json
 {"error":{"code":"CONNECTION_PERMISSION_DENIED","message":"...","request_id":"req_...","details":{}}}

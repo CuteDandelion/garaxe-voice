@@ -1,7 +1,7 @@
 # Security and Operations
 
 Status: Baseline
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Data protection
 
@@ -52,7 +52,7 @@ The local API defaults request bodies to 5 MiB, marks JSON responses `no-store` 
 
 ## Current local persistence boundary
 
-PGlite is used only as the local MVP database adapter. It is excluded from Git under `.local/`, creates its parent directory explicitly, and uses parameterized queries for user values. `DATABASE_URL` selects the node-postgres pool adapter. The versioned migration enables and forces RLS across all 18 tenant-owned tables; policies derive access through organization membership and the authenticated adapter supplies `app.current_user_id` only with transaction-local `set_config`. A least-privilege-role integration test proves cross-tenant filtering and permitted same-tenant project creation. Production still requires applying and negatively testing this migration against the chosen managed service/runtime role, plus distributed rate limiting, structured audit logging, backup policy, and a durable external job runner.
+PGlite is used only as the local MVP database adapter. It is excluded from Git under `.local/`, creates its parent directory explicitly, and uses parameterized queries for user values. `DATABASE_URL` selects the node-postgres pool adapter. The versioned migration enables and forces RLS across all 22 tenant-owned tables; policies derive access through organization membership and the authenticated adapter supplies `app.current_user_id` only with transaction-local `set_config`. A least-privilege-role integration test proves cross-tenant filtering and permitted same-tenant project creation. Production still requires applying and negatively testing this migration against the chosen managed service/runtime role, plus distributed rate limiting, structured audit logging, backup policy, and a durable external job runner.
 
 ## Current PDF rendering boundary
 

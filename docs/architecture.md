@@ -1,7 +1,7 @@
 # Architecture
 
 Status: Implemented local MVP with production adapters
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Recommended system
 
@@ -22,7 +22,7 @@ Background worker
 
 Production target: TypeScript web/API deployment, managed PostgreSQL, object storage for source files/report artifacts, and a durable Postgres-backed job queue. Keep deployment replaceable; do not couple domain logic to a hosting provider.
 
-The current MVP uses React/Vite plus a Node HTTP API. PGlite provides the disk-backed local adapter; `DATABASE_URL` selects the tested node-postgres pool adapter with explicit transaction commit/rollback behavior. `npm run migrate` applies checksum-verified, advisory-lock-serialized SQL migrations. The first managed migration enables and forces row-level security on all 18 tenant-owned tables, adds tenant predicate indexes, and uses a transaction-local `app.current_user_id` set by the authenticated database wrapper. Opaque hashed sessions, organizations, memberships, role checks, and ownership authorization remain the first application boundary; RLS is the database backstop. A live managed migration rehearsal, durable multi-process workers, backups, and deployment remain release gates.
+The current MVP uses React/Vite plus a Node HTTP API. PGlite provides the disk-backed local adapter; `DATABASE_URL` selects the tested node-postgres pool adapter with explicit transaction commit/rollback behavior. `npm run migrate` applies checksum-verified, advisory-lock-serialized SQL migrations. The first managed migration enables and forces row-level security on all 22 tenant-owned tables, adds tenant predicate indexes, and uses a transaction-local `app.current_user_id` set by the authenticated database wrapper. Opaque hashed sessions, organizations, memberships, role checks, and ownership authorization remain the first application boundary; RLS is the database backstop. A live managed migration rehearsal, durable multi-process workers, backups, and deployment remain release gates.
 
 ## Bounded modules
 

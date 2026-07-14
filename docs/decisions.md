@@ -1,7 +1,7 @@
 # Decisions
 
 Status: Living log
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 | ID | Decision | Rationale |
 |---|---|---|
@@ -16,12 +16,12 @@ Last updated: 2026-07-13
 | D-009 | Reports are immutable snapshots; curation is separate from machine output. | Preserves reproducibility and user work. |
 | D-010 | Use bounded, cost-aware agent delegation rather than automatic maximum fan-out. | Preserves parallel speedups while limiting duplicated context, token use, merge conflicts, and repeated verification. |
 | D-011 | Route orchestration by economy/standard/deep capability tiers and escalate only on evidence. | Keeps model choices portable and directs expensive reasoning toward high-risk ambiguity instead of routine work. |
-| D-012 | Establish the MVP with a React/Vite editorial Overview vertical slice before provider integration. | Locks the customer-facing data contract and visual system while allowing OAuth/ingestion work to proceed behind a stable UI boundary. |
+| D-012 | Establish the MVP with a React/Vite editorial Overview vertical slice before provider integration. Superseded for current navigation by D-039. | Locked the initial customer-facing data contract and visual system while OAuth/ingestion proceeded behind a stable UI boundary. |
 | D-013 | Prove CSV ingestion client-side before adding persistence and asynchronous import jobs. | Validates mapping and quality UX cheaply while keeping server-authoritative parsing, security, and tenancy as explicit backend work. |
 | D-014 | Use PGlite as the local PostgreSQL-compatible MVP adapter, not as the production database. | Provides real durable SQL and fast isolated integration tests without cloud credentials while preserving a migration path to managed PostgreSQL/Supabase. |
 | D-015 | Freeze analysis configuration and persist every review membership before interpretive processing. | Makes inclusion/exclusion auditable, prevents moving datasets, and lets later signals/themes remain reproducible. |
 | D-016 | Keep preprocessing deterministic and model-free. | Controls cost, preserves original language, and makes early pipeline failures independently testable before LLM-backed extraction. |
-| D-017 | Ship a non-LLM-first evidence and synthesis pipeline. | Makes the MVP usable without credentials or variable inference costs while preserving an optional future enrichment boundary. |
+| D-017 | Ship the initial evidence and synthesis pipeline without an LLM completion dependency. Superseded for current default presentation by D-050; retained as the deterministic degraded fallback. | Made the early MVP usable without credentials or variable inference costs while preserving the later governed enrichment boundary. |
 | D-018 | Persist spans, themes, and relationships instead of generated prose alone. | Allows every conclusion to be traversed to exact source language and re-evaluated when taxonomy versions change. |
 | D-019 | Treat low-volume projects as exploratory evidence, not high confidence. | Small runs may validate a theme for product demonstration while confidence labels and contradiction metrics clearly expose weak support. |
 | D-020 | Model curation as an append-only event stream and publish only a ready projection. | Preserves machine artifacts and auditability while ensuring rejected claims cannot leak into the authoritative Voice Map. |
@@ -34,13 +34,13 @@ Last updated: 2026-07-13
 | D-027 | Provide owner-email session recovery only on non-production loopback. | Keeps the local MVP usable after restart without pretending to be a production identity provider or exposing passwordless login publicly. |
 | D-028 | Force every automated test database to `memory://`. | Prevents integration tests from truncating or contaminating developer/customer-like local data. |
 | D-029 | Force database RLS and inject the authenticated user only through transaction-local configuration. | Makes tenant isolation a database backstop without leaking identity across pooled connections; the application authorization layer remains independently enforced. |
-| D-030 | Approve OpenCode Go as an optional enrichment adapter behind a durable quota-aware queue. | Adds interpretation quality without making provider availability, credentials, or variable inference cost a publication dependency. |
-| D-031 | Enforce global, organization, project, and analysis-run budgets through worst-case integer-micro reservations and atomic reconciliation. | Prevents overspend under concurrency and avoids floating-point accounting drift while preserving an auditable ledger. |
+| D-030 | Approve OpenCode Go as an enrichment adapter behind a durable quota-aware queue. D-049 and D-050 later made interpretation exhaustive and the default completion gate when configured. | Added interpretation quality without making provider availability or credentials an evidence dependency; deterministic fallback remains explicit. |
+| D-031 | When verified-price spend enforcement is enabled, enforce global, organization, project, and analysis-run budgets through worst-case integer-micro reservations and atomic reconciliation. D-049 made monetary enforcement opt-in. | Prevents overspend under concurrency and avoids floating-point accounting drift while preserving an auditable ledger for providers with verified pricing. |
 | D-032 | Apply per-provider/model request and token buckets, bounded tenant fairness, leases, retries, dead-lettering, and circuit breakers. | Converts external quota and outage behavior into controlled asynchronous states instead of blocking HTTP requests or analysis runs. |
 | D-033 | Keep deterministic artifacts authoritative and accept model output only as schema-valid, tenant-valid, exact-span evidence candidates. | Preserves zero-LLM publication, evidence traceability, and reproducibility while containing prompt injection and unsupported claims. |
 | D-034 | Do not promote any currently evaluated OpenCode Go model to default enrichment. | MiniMax failed taxonomy/span validation, DeepSeek missed bounded completion, and Qwen timed out; deterministic analysis remains the only default until the published quality/latency gates pass. |
 | D-035 | Enforce global, provider/model, and organization concurrency at atomic lease admission rather than in worker memory. | Transactional policy locks plus unexpired active-lease counts prevent multi-worker oversubscription, preserve tenant fairness, and ensure capped work consumes no request/token quota. |
-| D-036 | Supplement governed signal rules with deterministic dataset-frequency aspect discovery. | Keeps exact evidence and reproducibility while allowing repeated domain language to emerge from each frozen dataset instead of fixing analysis to a predetermined industry vocabulary. |
+| D-036 | Supplement governed signal rules with deterministic dataset-frequency aspect discovery. Superseded as the production theme source by D-037. | Preserved exact evidence while proving dataset-derived language before semantic clustering replaced rule/frequency production themes. |
 | D-037 | Replace production keyword/frequency extraction with exact segmentation, pinned multilingual-e5-small ONNX q8 embeddings, deterministic clustering, and dataset-derived cluster representation. | Removes predetermined theme vocabulary while retaining CPU deployment, reproducibility, and exact evidence spans. |
 | D-038 | Defer fine-grained signal typing to a SetFit classifier trained from real analyst curation. | Prevents invented labels from becoming product truth and creates an auditable quality-improvement loop. |
 | D-039 | Make Voice Map Read the project landing view and remove Overview. | Eliminates duplicate product surfaces while preserving the accepted editorial hierarchy. |

@@ -15,7 +15,7 @@ Last updated: 2026-07-14
 10. White-label report requirements beyond the implemented Garaxe PDF fidelity.
 11. Whether users may submit review-page URLs at launch; each URL source needs an explicit authorized acquisition method and rights review.
 12. OpenCode Go production data-processing location, retention/training terms, published quota contract, and whether those terms permit the intended customer-review workload.
-13. Initial provider/model concurrency, request/token bucket capacities, and dead-letter retention period; monetary global/organization/project/run budgets remain optional until a provider has a verified price contract.
+13. Whether the Bluerose staging capacity policy—two global/provider/organization calls, two-request/16,000-token buckets, and a 240-second deadline—remains appropriate under larger live datasets; production limits and dead-letter retention remain open, and monetary budgets remain optional until a provider has a verified price contract.
 14. Minimum analyst-curated corpus size, adjudication process, and per-label promotion thresholds for the future SetFit classifier.
 15. Whether `SmolLM2-360M-Instruct` Q8_0 or `Qwen2.5-0.5B-Instruct` Q4_K_M can pass the root-cause interpretation gate under 500 MB without unacceptable JSON, multilingual, or reasoning regressions.
 16. Which managed PostgreSQL, object-storage, KMS, and independent backup/restore targets replace the single-node Bluerose staging dependencies before paid beta.

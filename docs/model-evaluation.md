@@ -1,7 +1,7 @@
 # OpenCode Go model evaluation
 
 Status: Completed baseline and bounded production-schema pilot
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 ## Method
 
@@ -20,11 +20,11 @@ The production `cluster-interpretation-v3` contract was then exercised against t
 
 `cluster-interpretation-v5` retains the compact `keep`/`split` assessment and adds a bounded, auditable `publish`/`discard` disposition inside the same request. The gate explicitly rejects metadata, context-only clusters, and unrelated feedback joined by shared templates. Local validation includes an adversarial repeated-boilerplate fixture, but a fresh pattern-diverse external accuracy, latency, and truncation comparison remains required before treating earlier timing numbers as v5 performance evidence.
 
-The production embedding configuration is also gated by `semantic-diversity-gold-v1`: 24 deliberately dissimilar paraphrases across eight unrelated business domains. At the selected `0.84` mutual-KNN/mean floor and `0.81` weakest-member floor, the pinned production model scored 80.95% purity, 50% paraphrase-pair recall, 87.5% assignment coverage, and a 2.78% cross-topic merge rate. All mixed communities were marked for grouping adjudication. This fixture prevents syntactically repetitive demo data from overstating semantic quality; it is a bounded regression gate, not a claim of external validity.
+The current embedding configuration is also gated by `semantic-diversity-gold-v1`: 24 deliberately dissimilar paraphrases across eight unrelated business domains. At the selected `0.84` mutual-KNN/mean floor and `0.81` weakest-member floor, the pinned current-runtime model scored 80.95% purity, 50% paraphrase-pair recall, 87.5% assignment coverage, and a 2.78% cross-topic merge rate. All mixed communities were marked for grouping adjudication. This fixture prevents syntactically repetitive demo data from overstating semantic quality; it is a bounded regression gate, not a claim of external validity.
 
 ## Decision
 
-Disabling Qwen thinking cut this fixture's wall time by 49.8%, completed every batch, and materially improved taxonomy accuracy. All 50 returned quotations were exact, unique substrings of their immutable reviews, so the production server's deterministic unique-span recovery can establish trusted offsets; only 10 of the 50 model-supplied offset pairs were independently correct. This supports no-thinking as the default production inference mode and the compact prompt as the bounded cluster contract. It does not complete the paid-beta promotion gate: the full production-schema corpus, multilingual evidence, ambiguous repeated quotations, unsupported-claim audit, provider terms, cost, and analyst preference still require governed comparison.
+Disabling Qwen thinking cut this fixture's wall time by 49.8%, completed every batch, and materially improved taxonomy accuracy. All 50 returned quotations were exact, unique substrings of their immutable reviews, so the current server's deterministic unique-span recovery can establish trusted offsets; only 10 of the 50 model-supplied offset pairs were independently correct. This supports no-thinking as the default local inference mode and the compact prompt as the bounded cluster contract. It does not complete the paid-beta promotion gate: the full current-schema corpus, multilingual evidence, ambiguous repeated quotations, unsupported-claim audit, provider terms, cost, and analyst preference still require governed comparison.
 
 `minimax-m2.5` remains not evidence-safe, `deepseek-v4-flash` misses bounded completion, and reasoning-default `qwen3.7-plus` is unsuitable under the tested latency budget. Deterministic evidence and fallback remain authoritative regardless of model mode.
 

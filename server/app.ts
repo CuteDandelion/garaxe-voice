@@ -380,8 +380,6 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       return
     }
 
-    // Local MVP boundary: these project-scoped routes intentionally have no auth yet.
-    // Production must authorize organization/project access before exposing them.
     if (request.method === 'POST' && url.pathname === '/api/analysis-runs') {
       const input = await body(request)
       const projectId = String(input.projectId || '')

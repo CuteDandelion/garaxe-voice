@@ -1,7 +1,7 @@
 # Open Questions
 
-Status: Requires owner decisions before production implementation
-Last updated: 2026-07-13
+Status: Requires owner decisions before connected paid-beta release
+Last updated: 2026-07-14
 
 1. Product name and whether the app is branded as `garaxe. voice` or a separate product.
 2. Exact primary launch segment: individual local business, multi-location operator, or agency.
@@ -10,7 +10,7 @@ Last updated: 2026-07-13
 5. Google Business Profile API approval status and availability of a real staging design partner.
 6. Supported launch languages and whether translated analysis preserves bilingual evidence.
 7. Review/credential/report retention periods and deletion SLA.
-8. Which future model or prompt revision will pass the promotion thresholds in `model-evaluation.md`; the three evaluated models are explicitly not promoted and zero-LLM publication remains mandatory.
+8. Which provider/model configuration will pass the paid-beta promotion thresholds in `model-evaluation.md` and the target-environment operational gates. Qwen no-thinking is the evaluated local default under D-052, but it is not yet promoted for connected paid-beta operation; an explicitly labelled deterministic fallback remains mandatory.
 9. Which organization roles may mark curation ready in production; the current write boundary allows owner, admin, and analyst.
 10. White-label report requirements beyond the implemented Garaxe PDF fidelity.
 11. Whether users may submit review-page URLs at launch; each URL source needs an explicit authorized acquisition method and rights review.

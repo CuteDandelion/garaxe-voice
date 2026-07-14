@@ -352,9 +352,9 @@ Implemented in the repository and deployed to Bluerose staging on 2026-07-14. Th
 
 ### Slice 27 — Bluerose LLM interpretation enablement
 
-Implemented in the repository on 2026-07-14; target evidence must be recorded separately after rollout:
+Implemented and deployed to Bluerose staging on 2026-07-14. The bounded provider-backed proof is recorded in `deployment-evidence/2026-07-14-bluerose-llm.md`:
 
 - The Bluerose ConfigMap enables the evaluated OpenCode Go `qwen3.7-plus` cluster interpreter with explicit request/token capacity, two-call global/provider/organization concurrency, a 1,800-token output cap, a 240-second job deadline, and monetary enforcement disabled for the capacity-priced provider.
 - The provider credential is a required server-side Kubernetes Secret key. Initial and additive secret scripts fail closed, never print the value, and refuse implicit rotation.
 - API egress adds public IPv4 TCP 443 while excluding private, local, test, and reserved networks. This is an explicit staging limitation because standard Kubernetes NetworkPolicy cannot select an FQDN; the server-owned provider adapter retains the fixed OpenCode base URL.
-- Live acceptance requires actual provider attempts, validated interpretation coverage, `llm-interpreted-theme-engine-v1`, public application health, and Portfolio preservation. Existing deterministic runs remain immutable historical artifacts.
+- Live acceptance proved three successful provider jobs, two validated OpenCode-backed themes, `llm-interpreted-theme-engine-v1`, public application health, and Portfolio preservation. Existing deterministic runs remain immutable historical artifacts.

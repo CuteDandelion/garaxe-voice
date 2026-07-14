@@ -17,6 +17,7 @@ Last updated: 2026-07-14
 - Responsive editorial workflows at 390px and clean browser console checks for the completed product flows.
 - Locally runnable strict typecheck, unit/integration tests, production web/server builds, full dependency audit, Kubernetes rendering, and documentation sync commands. Repository CI and GHCR publication workflows encode these lanes and passed for the deployed source SHA.
 - Non-root web/API images, pinned ReportLab, prewarmed pinned ONNX revisions, offline runtime inference, same-origin proxying, database-aware readiness, staging bootstrap closure, and staging access-key recovery are proven on Bluerose. The staging proof includes capacity observation, a bounded off-server dump/restore rehearsal, pod persistence, and application rollback; it does not establish managed backup, HA, disaster recovery, or paid-beta identity readiness. See `deployment-evidence/2026-07-14-bluerose-staging.md`.
+- OpenCode Go interpretation is active for new Bluerose runs: a bounded live proof completed three provider jobs without fallback and published two validated `qwen3.7-plus` interpretations under `llm-interpreted-theme-engine-v1`. This proves staging execution, not comparative quality, production egress, independent-worker, or ongoing provider-availability gates. See `deployment-evidence/2026-07-14-bluerose-llm.md`.
 
 ## External release gates
 

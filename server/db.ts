@@ -8,10 +8,19 @@ import { googleOAuthSchemaSql } from './googleOAuth'
 import { googleSyncSchemaSql } from './googleSync'
 import { llmQueueSchemaSql } from './llmQueue'
 import type { Database, DatabaseClient } from './database'
+import { postgresSslConfig } from './postgresSsl'
 
 let databasePromise: Promise<Database> | undefined
+let closeDatabaseConnection: (() => Promise<void>) | undefined
 
 type PoolLike = Pick<Pool, 'query' | 'connect'>
+
+export const baseSchemaStatements = [schemaSql, authSchemaSql, googleOAuthSchemaSql, googleSyncSchemaSql, llmQueueSchemaSql]
+
+async function initializeDatabase(database: Database): Promise<Database> {
+  for (const statement of baseSchemaStatements) await database.exec(statement)
+  return database
+}
 
 export function createManagedPostgresDatabase(pool: PoolLike): Database {
   const fromClient = (client: PoolClient): DatabaseClient => ({
@@ -45,17 +54,19 @@ export function createManagedPostgresDatabase(pool: PoolLike): Database {
 }
 
 function postgresDatabase(connectionString: string): Database {
-  return createManagedPostgresDatabase(new Pool({
+  const pool = new Pool({
     connectionString,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : undefined,
-  }))
+    ssl: postgresSslConfig(),
+  })
+  closeDatabaseConnection = () => pool.end()
+  return createManagedPostgresDatabase(pool)
 }
 
-export function getDatabase() {
+export function getDatabase(): Promise<Database> {
   if (!databasePromise) {
     if (process.env.DATABASE_URL) {
       const database = postgresDatabase(process.env.DATABASE_URL)
-      databasePromise = database.exec(schemaSql).then(() => database.exec(authSchemaSql)).then(() => database.exec(googleOAuthSchemaSql)).then(() => database.exec(googleSyncSchemaSql)).then(() => database.exec(llmQueueSchemaSql)).then(() => database)
+      databasePromise = initializeDatabase(database)
       return databasePromise
     }
     const dataDir = process.env.GARAXE_DB_DIR || './.local/pgdata'
@@ -63,15 +74,18 @@ export function getDatabase() {
       mkdirSync(dirname(resolve(dataDir)), { recursive: true })
     }
     databasePromise = PGlite.create(dataDir).then(async (database) => {
-      await database.exec(schemaSql)
-      await database.exec(authSchemaSql)
-      await database.exec(googleOAuthSchemaSql)
-      await database.exec(googleSyncSchemaSql)
-      await database.exec(llmQueueSchemaSql)
-      return database as unknown as Database
+      closeDatabaseConnection = () => database.close()
+      return initializeDatabase(database as unknown as Database)
     })
   }
   return databasePromise
+}
+
+export async function closeDatabase() {
+  const close = closeDatabaseConnection
+  closeDatabaseConnection = undefined
+  databasePromise = undefined
+  await close?.()
 }
 
 export async function resetDatabaseForTests() {

@@ -114,8 +114,18 @@ Provider delivery is at least once; accepted results, budget ledger entries, and
 
 The implemented LLM worker runtime is a bounded adapter around this queue. Request construction and candidate validation are injected governed boundaries; the worker itself persists no prompt or raw provider completion. Provider/model circuit state is persisted separately from tenant jobs and permits only one half-open probe after cooldown. A process supervisor or external worker deployment may call the same `runOnce` contract without changing queue semantics.
 
+## Bluerose staging topology
+
+The repository-defined staging target is a single-node Kubernetes deployment behind the existing remotely managed Cloudflare Tunnel. Cloudflare terminates public TLS and routes `voice.misakirose.com` to the `garaxe-web` ClusterIP service. The unprivileged web tier serves the Vite build and proxies same-origin `/api` traffic to `garaxe-api`; neither workload uses NodePort or LoadBalancer exposure.
+
+The staging API remains one 4 vCPU/8 GiB-requested replica because import, semantic analysis, PDF work, and the attached interpretation poller are not yet fully externalized. `Recreate` prevents overlapping API owners during rollout. Two small web replicas may roll independently. PostgreSQL is a pinned image on a retained static host-backed volume with namespace-local access only. This topology proves deployment behavior but is not HA, managed PostgreSQL, an independent durable worker, or a paid-beta production architecture.
+
+Application images use immutable Git commit tags. The API image contains the compiled server and migration entries, pinned ReportLab runtime, and prewarmed pinned ONNX model cache; runtime model downloads are disabled. A migration Job must complete before the API deployment is applied. Secrets are created out of band and referenced by name.
+
+`GARAXE_DATABASE_SSL_MODE=disable` is an explicit staging exception only for the NetworkPolicy-restricted in-cluster PostgreSQL hop. Production and external database connections default to certificate verification and may load a provider CA bundle. `NODE_ENV` remains `production` in staging so secure cookies and production-only route restrictions stay active.
+
 ## Scale posture
 
-Optimize for 50-10,000 written reviews per project first. Batch work, use cursor pagination, and analyze changed records incrementally. Avoid microservices and Kubernetes until measured operational load requires them.
+Optimize for 50-10,000 written reviews per project first. Batch work, use cursor pagination, and analyze changed records incrementally. Avoid application microservices and new Kubernetes complexity until measured operational load requires them. The Bluerose staging overlay is an explicit exception because an existing protected cluster and tunnel are the chosen deployment substrate; it does not justify production microservice decomposition.
 
 The semantic worker target is a comfortable 4 vCPU/8 GB deployment. Release budgets are <=2.5 GB peak worker RSS, <=180 seconds cold and <=45 seconds warm for 100 medium-length reviews, and no unbounded all-dataset tensor allocation. Ten-thousand-review operation requires chunked embedding persistence/incremental clustering before promotion.

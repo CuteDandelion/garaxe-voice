@@ -12,7 +12,7 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   return payload.data
 }
 
-export type AuthStatus = { needsBootstrap: boolean }
+export type AuthStatus = { needsBootstrap: boolean; stagingAccessEnabled?: boolean }
 export type AuthContext = {
   sessionId: string
   user: { id: string; email: string; displayName: string }
@@ -23,6 +23,7 @@ export const getAuthStatus = () => apiRequest<AuthStatus>('/api/auth/status')
 export const getCurrentAuth = () => apiRequest<AuthContext>('/api/auth/me')
 export const logout = () => apiRequest<{ signedOut: boolean }>('/api/auth/logout', { method: 'POST' })
 export const resumeLocalSession = (email: string) => apiRequest<{ expiresAt: string }>('/api/auth/local-session', { method: 'POST', body: JSON.stringify({ email }) })
+export const resumeStagingSession = (email: string, accessKey: string) => apiRequest<{ expiresAt: string }>('/api/auth/staging-session', { method: 'POST', body: JSON.stringify({ email, accessKey }) })
 export const bootstrapOwner = (input: { email: string; displayName: string; organizationName: string }) =>
   apiRequest<{ userId: string; organizationId: string; expiresAt: string }>('/api/auth/bootstrap', {
     method: 'POST', body: JSON.stringify(input),

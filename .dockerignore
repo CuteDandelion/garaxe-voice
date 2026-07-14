@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.local
+dist
+dist-server
+node_modules
+coverage
+playwright-report
+test-results
+docs
+*.log
+**/*.test.ts
+**/*.test.tsx

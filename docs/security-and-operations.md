@@ -20,6 +20,8 @@ The current first-owner/session implementation is not a public password identity
 
 The local session-recovery endpoint accepts only loopback connections when `NODE_ENV` is not `production`; production receives the same 404 as an absent route. It exists solely to keep a local MVP usable after restart and must never be enabled as an internet-facing login mechanism.
 
+The Bluerose demo has a separate staging-only recovery boundary. `/api/auth/staging-session` is enabled only by the exact staging tier plus feature flag, accepts only the configured existing owner, requires a generated secret of at least 32 characters, compares a SHA-256 digest in constant time, and returns a generic authentication failure. The key lives in Kubernetes Secret material, is never returned, and must be rotated if exposed. This is not invitation, account recovery, MFA, or a production identity provider; those paid-beta gates remain open.
+
 ## Import and model safety
 
 Treat uploaded files and review text as untrusted. Enforce file size/row limits, safe parsing, formula-injection protection on exports, MIME/content validation, and malware scanning where required. Review text is data, never instruction; prompts delimit it and model tools are unavailable during extraction.
@@ -50,13 +52,19 @@ Usage and audit events record organization, project, run, task kind, routing-pol
 
 The local API defaults request bodies to 5 MiB, marks JSON responses `no-store` and `nosniff`, marks PDFs private/no-store, and avoids logging raw exception messages. When cookie authentication is used with `GARAXE_ALLOWED_ORIGIN`, state-changing requests must match that exact origin. Distributed rate limits, edge CSP, durable audit logging, and managed observability remain deployment gates.
 
+The Bluerose staging origin uses only ClusterIP services. Cloudflare Tunnel is the sole public path, and the route must be appended without altering Portfolio or the terminal 404 fallback. Namespace default-deny policy permits Cloudflare-to-web, web-to-API, API/migration-to-PostgreSQL, and required DNS only; Google and LLM egress stay disabled until their policy and credentials are explicitly approved. Public DNS is created only after internal readiness and owner bootstrap are proven.
+
 ## Current local persistence boundary
 
 PGlite is used only as the local MVP database adapter. It is excluded from Git under `.local/`, creates its parent directory explicitly, and uses parameterized queries for user values. `DATABASE_URL` selects the node-postgres pool adapter. The versioned migration enables and forces RLS across all 22 tenant-owned tables; policies derive access through organization membership and the authenticated adapter supplies `app.current_user_id` only with transaction-local `set_config`. A least-privilege-role integration test proves cross-tenant filtering and permitted same-tenant project creation. Production still requires applying and negatively testing this migration against the chosen managed service/runtime role, plus distributed rate limiting, structured audit logging, backup policy, and a durable external job runner.
 
+Bluerose staging uses a pinned PostgreSQL 16 image and a retained 50 GiB host-backed volume on the single node. The in-cluster hop explicitly disables PostgreSQL TLS only while NetworkPolicy confines it to the namespace. External or paid-beta PostgreSQL defaults to certificate verification and may load a private CA bundle. A verified off-server dump is required before meaningful staging data is retained; this single-node volume is neither managed storage nor disaster recovery.
+
 ## Current PDF rendering boundary
 
 The local API passes only a server-owned immutable snapshot to a fixed renderer script and never accepts a command, script path, output path, or template from the browser. The subprocess is replaceable infrastructure, not a public execution surface. Production should run it in a resource-limited worker with bounded snapshot size, timeouts, isolated temporary storage, dependency pinning, and redacted failure logs. A downloaded PDF inherits the report's reviewer-data retention and access-control requirements.
+
+The staging API image pins ReportLab, runs as a non-root user with a read-only root filesystem, and provides only a size-limited temporary volume. PDF isolation into an external durable worker remains a paid-beta requirement.
 
 ## Provider/legal boundary
 

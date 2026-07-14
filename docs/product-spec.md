@@ -230,6 +230,7 @@ Implemented on 2026-07-12:
 - Provider/location/review identity makes re-sync idempotent while preventing equal review IDs from different locations from merging.
 - A real protected HTTP integration test proves connection persistence -> discovery -> selection -> asynchronous sync -> normalized inventory using a deterministic provider contract server.
 - First-run owner setup and loopback-only local session recovery keep the development MVP usable across restarts without creating a password endpoint that could accidentally ship to production.
+- The public staging tier may use the separately gated access-key session route only when `GARAXE_DEPLOYMENT_TIER=staging`, `GARAXE_STAGING_AUTH_ENABLED=true`, the configured owner already exists, and a generated secret of at least 32 characters is present. This route does not satisfy the production identity-provider gate.
 - Browser QA on a fresh server proves the current Sources bundle, paste mapping, Google configuration diagnostics, clean console, and no page overflow at 390px.
 
 Live Google project approval, consent-screen verification, and proof against a real verified profile remain external release evidence, not synthetic-test claims.
@@ -335,3 +336,15 @@ Implemented on 2026-07-13:
 - Discarded machine output and exact evidence remain immutable and reproducible but do not appear in the Voice Map or Curation queue.
 - Published interpretation candidates retain every evidence-backed signal type, allowing one primary pain or praise theme to also appear in Objections and Emotional Triggers.
 - Regression evaluation includes surface-different paraphrases and shared boilerplate across unrelated topics; the intentionally templated game fixture cannot alone establish semantic quality.
+
+### Slice 26 — Bluerose staging deployment enablement
+
+Implemented in the repository on 2026-07-14; live rollout evidence remains separate until the target checks pass:
+
+- Production build definitions emit a Vite/Nginx web image and a compiled Node API image. The repository workflow publishes both to GHCR with immutable source-commit tags only after it runs on `main`.
+- The API exposes process-only `/api/live` and database-aware `/api/health`, binds through explicit host/port configuration, closes listeners/database connections on termination, and uses an explicit PostgreSQL certificate policy.
+- Both pinned ONNX revisions are downloaded during the API image build and runtime remote-model access is disabled. Python and ReportLab are pinned inside the same staging image for immutable report rendering.
+- The Bluerose Kubernetes overlay defines a dedicated namespace, retained static PostgreSQL storage, one API/analysis replica, two web replicas, ClusterIP-only services, probes, resource envelopes, and default-deny network policy.
+- The staging database is intentionally self-hosted on the single Bluerose node and therefore does not satisfy the managed-PostgreSQL, independent-backup, HA, or paid-beta restore gates.
+- Cloudflare Tunnel publication occurs only after internal service verification and owner bootstrap. The existing Portfolio route and terminal 404 rule are protected dependencies.
+- The staging owner is `test-user@example.com`; a generated access key lives only in Kubernetes Secret material and is never committed or returned by the session API.

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { getDatabase } from './db'
 import { createImportJob, processImportJob } from './importProcessor'
@@ -62,6 +62,20 @@ function json(response: ServerResponse, status: number, payload: unknown) {
 function sessionCookie(token: string, maxAge: number) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
   return `garaxe_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`
+}
+
+function stagingAccessConfiguration() {
+  if (process.env.GARAXE_DEPLOYMENT_TIER !== 'staging' || process.env.GARAXE_STAGING_AUTH_ENABLED !== 'true') return null
+  const email = process.env.GARAXE_STAGING_OWNER_EMAIL?.trim().toLowerCase()
+  const accessKey = process.env.GARAXE_STAGING_ACCESS_KEY || ''
+  if (!email || accessKey.length < 32) throw new Error('STAGING_AUTH_MISCONFIGURED')
+  return { email, accessKey }
+}
+
+function secretMatches(candidate: string, expected: string) {
+  const candidateDigest = createHash('sha256').update(candidate).digest()
+  const expectedDigest = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(candidateDigest, expectedDigest)
 }
 
 function googleOAuthClient(database: Awaited<ReturnType<typeof getDatabase>>) {
@@ -142,10 +156,14 @@ function inventoryFilters(url: URL): ReviewInventoryFilters {
 }
 
 export async function handleRequest(request: IncomingMessage, response: ServerResponse) {
-  let database = await getDatabase()
   const url = new URL(request.url || '/', 'http://localhost')
 
   try {
+    if (request.method === 'GET' && url.pathname === '/api/live') {
+      return json(response, 200, { status: 'alive' })
+    }
+
+    let database = await getDatabase()
     const mutating = request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS'
     const cookieAuthenticated = request.headers.cookie?.includes('garaxe_session=')
     const allowedOrigin = process.env.GARAXE_ALLOWED_ORIGIN
@@ -153,12 +171,16 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       throw new AuthError('ORIGIN_FORBIDDEN', 'Request origin is not allowed.', 403)
     }
     if (request.method === 'GET' && url.pathname === '/api/health') {
+      await database.query('SELECT 1')
       return json(response, 200, { status: 'ready', database: process.env.DATABASE_URL ? 'postgres' : 'pglite' })
     }
 
     if (request.method === 'GET' && url.pathname === '/api/auth/status') {
       const users = await database.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM auth_users')
-      return json(response, 200, { data: { needsBootstrap: Number(users.rows[0]?.count || 0) === 0 } })
+      return json(response, 200, { data: {
+        needsBootstrap: Number(users.rows[0]?.count || 0) === 0,
+        stagingAccessEnabled: Boolean(stagingAccessConfiguration()),
+      } })
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/bootstrap') {
@@ -191,6 +213,22 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       const email = String(input.email || '').trim().toLowerCase()
       const user = await database.query<{ id: string }>('SELECT id FROM auth_users WHERE email = $1', [email])
       if (!user.rows[0]) throw new AuthError('RESOURCE_NOT_FOUND', 'Resource not found.', 404)
+      const session = await createSession(database, user.rows[0].id)
+      response.setHeader('set-cookie', sessionCookie(session.token, 60 * 60 * 24 * 30))
+      return json(response, 201, { data: { expiresAt: session.expiresAt } })
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/auth/staging-session') {
+      const configuration = stagingAccessConfiguration()
+      if (!configuration) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
+      const input = await body(request)
+      const email = String(input.email || '').trim().toLowerCase()
+      const accessKey = String(input.accessKey || '')
+      if (email !== configuration.email || !secretMatches(accessKey, configuration.accessKey)) {
+        throw new AuthError('AUTHENTICATION_FAILED', 'Authentication failed.', 401)
+      }
+      const user = await database.query<{ id: string }>('SELECT id FROM auth_users WHERE email = $1', [email])
+      if (!user.rows[0]) throw new AuthError('AUTHENTICATION_FAILED', 'Authentication failed.', 401)
       const session = await createSession(database, user.rows[0].id)
       response.setHeader('set-cookie', sessionCookie(session.token, 60 * 60 * 24 * 30))
       return json(response, 201, { data: { expiresAt: session.expiresAt } })

@@ -9,6 +9,19 @@ export const SENTIMENT_MODEL_ID = 'Xenova/distilbert-base-multilingual-cased-sen
 export const SENTIMENT_MODEL_DTYPE = 'q8'
 export const SENTIMENT_MODEL_REVISION = '9d9ac661fd7b0b48535a1fc99b20ae6947629e65'
 
+type TransformersEnvironment = {
+  allowLocalModels: boolean
+  allowRemoteModels: boolean
+  cacheDir: string
+}
+
+export function configureTransformersEnvironment(environment: TransformersEnvironment) {
+  const cacheDir = process.env.GARAXE_MODEL_CACHE_DIR?.trim()
+  if (cacheDir) environment.cacheDir = cacheDir
+  environment.allowLocalModels = true
+  environment.allowRemoteModels = process.env.GARAXE_ALLOW_REMOTE_MODELS !== 'false'
+}
+
 export const e5Input = (text: string) => /^(?:query|passage):\s/u.test(text) ? text : `passage: ${text}`
 
 export type ReviewSegment = {
@@ -370,7 +383,8 @@ let defaultSentimentProviderPromise: Promise<SentimentProvider> | null = null
 
 export function createOnnxEmbeddingProvider(): Promise<EmbeddingProvider> {
   if (defaultProviderPromise) return defaultProviderPromise
-  defaultProviderPromise = import('@huggingface/transformers').then(async ({ pipeline }) => {
+  defaultProviderPromise = import('@huggingface/transformers').then(async ({ pipeline, env }) => {
+    configureTransformersEnvironment(env)
     const extractor = await pipeline('feature-extraction', SEMANTIC_MODEL_ID, { dtype: SEMANTIC_MODEL_DTYPE, revision: SEMANTIC_MODEL_REVISION })
     return {
       id: SEMANTIC_MODEL_ID,
@@ -398,7 +412,8 @@ function normalizedSentimentLabel(value: string): SignalSentiment {
 
 export function createOnnxSentimentProvider(): Promise<SentimentProvider> {
   if (defaultSentimentProviderPromise) return defaultSentimentProviderPromise
-  defaultSentimentProviderPromise = import('@huggingface/transformers').then(async ({ pipeline }) => {
+  defaultSentimentProviderPromise = import('@huggingface/transformers').then(async ({ pipeline, env }) => {
+    configureTransformersEnvironment(env)
     const classifier = await pipeline('sentiment-analysis', SENTIMENT_MODEL_ID, { dtype: SENTIMENT_MODEL_DTYPE, revision: SENTIMENT_MODEL_REVISION })
     return {
       id: SENTIMENT_MODEL_ID,

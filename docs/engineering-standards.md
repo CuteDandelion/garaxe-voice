@@ -1,7 +1,7 @@
 # Engineering Standards
 
 Status: Baseline
-Last updated: 2026-07-12
+Last updated: 2026-07-14
 
 - TypeScript strict mode; validate all external input at boundaries.
 - Domain modules own their types and behavior; routes/controllers stay thin.
@@ -14,6 +14,14 @@ Last updated: 2026-07-12
 - Add unit tests before or with domain behavior; add integration tests at DB/provider/job boundaries; add end-to-end tests for customer-critical flows.
 - Avoid speculative abstractions. Add a provider capability only after a manual proof of credential acquisition, identity discovery, useful full-text retrieval, lifecycle behavior, and commercial permission.
 - Changes to schemas, APIs, UX contracts, analysis semantics, risks, or architectural boundaries require matching documentation updates.
+
+## Deployment engineering
+
+- Build web and API images from reviewed source and address them by immutable Git commit tag; never deploy `latest`.
+- Keep Kubernetes desired state under `deploy/kubernetes`, render it before use, validate it against the target API, and apply database/storage, migration, application, then external routing in that order.
+- Keep database passwords, staging access keys, provider credentials, OAuth envelope keys, Cloudflare credentials, and generated Secret manifests out of Git and build logs.
+- Use ClusterIP services behind Cloudflare Tunnel. Fetch the current remote tunnel configuration immediately before mutation, preserve unrelated routes and terminal fallback, and verify the protected Portfolio path after every Cloudflare change.
+- Treat the single-node retained volume and process-attached jobs as staging constraints. They must not be described as HA, managed persistence, independently scalable workers, or paid-beta readiness.
 
 ## Agent orchestration
 

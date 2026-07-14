@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: garaxe
+resources:
+  - migration-job.yaml
+images:
+  - name: ghcr.io/cutedandelion/garaxe-api
+    newTag: "REPLACE_WITH_GIT_SHA"

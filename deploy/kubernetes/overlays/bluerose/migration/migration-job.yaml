@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garaxe-migrate
+  namespace: garaxe
+  labels:
+    app.kubernetes.io/name: garaxe-migrate
+    app.kubernetes.io/part-of: garaxe
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: garaxe-migrate
+        app.kubernetes.io/part-of: garaxe
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/cutedandelion/garaxe-api:REPLACE_WITH_GIT_SHA
+          imagePullPolicy: IfNotPresent
+          command: ["node", "dist-server/migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: garaxe-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: garaxe-secrets
+                  key: database-url
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true

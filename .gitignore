@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 node_modules/
 dist/
+dist-server/
 .qa/
 *.tsbuildinfo
 vite.config.js

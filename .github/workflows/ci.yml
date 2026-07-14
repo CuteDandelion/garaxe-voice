@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - run: npm ci
+      - run: npm audit
+      - run: npm run typecheck
+      - run: npm test -- --testTimeout=15000
+      - run: npm run build
+      - run: npm run build:server
+      - run: ./deploy/scripts/check-manifests.sh
+        env:
+          GARAXE_IMAGE_TAG: ${{ github.sha }}
+      - run: ./scripts/check-docs-sync.sh

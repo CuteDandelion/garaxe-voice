@@ -8,12 +8,17 @@
     "dev:api": "tsx watch --env-file=.env server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:web": "vite build",
+    "build:server": "esbuild server/index.ts server/migrate.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outdir=dist-server",
+    "start:server": "node dist-server/index.js",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:server": "GARAXE_DB_DIR=memory:// vitest run server",
     "evaluate:semantic": "tsx server/evaluation/semanticClusterEvaluator.ts",
+    "prewarm:models": "tsx scripts/prewarm-models.ts",
     "typecheck": "tsc -b --pretty false",
-    "migrate": "node scripts/apply-migrations.mjs"
+    "migrate": "tsx server/migrate.ts",
+    "migrate:production": "node dist-server/migrate.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
@@ -37,10 +42,11 @@
     "@vitejs/plugin-react": "^4.3.4",
     "axe-core": "^4.12.1",
     "concurrently": "^10.0.3",
+    "esbuild": "^0.25.0",
     "jsdom": "^25.0.1",
     "tsx": "^4.23.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "vitest": "3.2.6"
   }
 }

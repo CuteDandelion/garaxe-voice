@@ -21,6 +21,14 @@ server/migrations/001_tenant_rls.sql
 docs/reference-assets/garaxe-voice-of-customer/README.md
 docs/reference-assets/garaxe-voice-of-customer/dashboard-primary-reference.png
 docs/reference-assets/garaxe-voice-of-customer/live-page-full.png
+Dockerfile.api
+Dockerfile.web
+.github/workflows/ci.yml
+.github/workflows/publish-images.yml
+deploy/README.md
+deploy/kubernetes/overlays/bluerose/kustomization.yaml
+deploy/scripts/check-manifests.sh
+deploy/scripts/render-manifests.sh
 "
 
 failed=0
@@ -81,6 +89,7 @@ if grep -n -E 'intentionally have no auth yet' server/app.ts >>/tmp/garaxe-doc-o
 if grep -n -E 'Production authorization must scope every route' docs/data-and-api-contracts.md >>/tmp/garaxe-doc-obsolete-claims.txt 2>/dev/null; then obsolete_found=1; fi
 if grep -n -E 'Production analysis uses.*deterministic spherical clustering' docs/product-spec.md >>/tmp/garaxe-doc-obsolete-claims.txt 2>/dev/null; then obsolete_found=1; fi
 if grep -n -E 'Merge-blocking E2E covers' docs/testing-and-delivery.md >>/tmp/garaxe-doc-obsolete-claims.txt 2>/dev/null; then obsolete_found=1; fi
+if grep -n -E 'There is currently no repository CI workflow|not yet enforced by a repository CI workflow' docs/testing-and-delivery.md docs/paid-beta-readiness.md >>/tmp/garaxe-doc-obsolete-claims.txt 2>/dev/null; then obsolete_found=1; fi
 if [ "$obsolete_found" -ne 0 ]; then
   echo "obsolete or contradictory documentation claims found:" >&2
   cat /tmp/garaxe-doc-obsolete-claims.txt >&2

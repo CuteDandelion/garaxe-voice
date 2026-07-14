@@ -176,10 +176,11 @@ Creating another report never updates an existing report row. The snapshot JSON 
 
 ### Implemented authentication and tenant contract
 
-- `GET /api/auth/status` reveals only whether first-owner setup remains available.
+- `GET /api/auth/status` reveals whether first-owner setup remains available and whether the explicitly configured staging-access form should be shown; it exposes no owner address or secret.
 - `POST /api/auth/bootstrap` creates the sole initial owner and organization, closes on subsequent calls, sets an HttpOnly SameSite=Strict session cookie, and returns a token once for non-browser clients.
 - `GET /api/auth/me` returns the authenticated identity and memberships without credentials and is the only source for signed-in shell identity; `POST /api/auth/logout` revokes the server-side session before the client returns to its signed-out gate.
 - `POST /api/auth/local-session` restores an existing owner by email only from loopback in non-production environments; it is deliberately unavailable in production.
+- `POST /api/auth/staging-session` accepts `{email, accessKey}` only when the deployment tier is exactly `staging`, staging auth is enabled, the configured owner exists, and the server secret is at least 32 characters. Email and access-key failures share one 401 response; success sets the normal opaque HttpOnly session cookie and never returns the access key. The route is otherwise indistinguishable from an absent route.
 - All remaining `/api` resources require a cookie or strict Bearer session and resolve ownership through project -> organization membership.
 - Session rows store token hashes, expiry, revocation, and last-seen time; plaintext session tokens are never persisted.
 

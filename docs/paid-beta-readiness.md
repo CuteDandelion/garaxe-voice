@@ -15,7 +15,8 @@ Last updated: 2026-07-14
 - Automated structural accessibility scans plus responsive/reduced-motion/focus contracts.
 - Bounded request bodies, no-store/nosniff API responses, restricted cookie-origin mutations, and sanitized operational errors.
 - Responsive editorial workflows at 390px and clean browser console checks for the completed product flows.
-- Locally runnable strict typecheck, unit/integration tests, production build, and documentation sync commands. These are not yet enforced by a repository CI workflow.
+- Locally runnable strict typecheck, unit/integration tests, production web/server builds, full dependency audit, Kubernetes rendering, and documentation sync commands. Repository CI and GHCR publication workflows now encode these lanes; successful GitHub execution remains required evidence.
+- Locally built non-root web/API images, pinned ReportLab, prewarmed pinned ONNX revisions, offline runtime inference, same-origin proxying, database-aware readiness, staging bootstrap closure, and staging access-key recovery. These local proofs do not establish target-cluster capacity, backup, restore, or paid-beta identity readiness.
 
 ## External release gates
 
@@ -33,7 +34,7 @@ The product must not be called production-ready or offered as a paid connected b
 10. Configure TLS, allowed origin, secure cookies, CSP at the web edge, secret management, and separate development/staging/production environments.
 11. Package/prewarm and integrity-verify the pinned ONNX model, then pass the 100/1,000-review quality, peak-RSS, cold/warm-latency, restart, and offline-cache benchmarks on the 4 vCPU/8 GB worker target.
 12. Run the root-cause interpretation benchmark against the selected OpenCode Go model and any local compact fallback; record provider terms, schema validity, unsupported-claim rate, exact-span validity, analyst preference, p50/p95 latency, peak RSS, and cost before connected paid-beta release.
-13. Add and exercise repository CI that enforces formatting, lint, strict typecheck, dependency/security audit, unit/integration tests, production build, documentation sync/audit, diff hygiene, and merge-blocking critical-path browser E2E; add scheduled provider smoke tests only where credentials and provider policy permit.
+13. Exercise the repository CI and extend it to enforce formatting, lint, complete dependency/security disposition, documentation contradiction/diff hygiene, and merge-blocking critical-path browser E2E; add scheduled provider smoke tests only where credentials and provider policy permit.
 
 ## Release decision
 

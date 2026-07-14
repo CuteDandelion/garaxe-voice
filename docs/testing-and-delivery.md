@@ -5,7 +5,7 @@ Last updated: 2026-07-14
 
 ## Test lanes
 
-- Static: strict typecheck is currently wired. Formatting, lint, and dependency/security checks remain required pre-beta automation work and must not be reported as passing repository gates until scripts exist.
+- Static: strict typecheck and the full npm dependency audit are wired in repository CI. Formatting, lint, and merge-blocking browser checks remain required pre-beta automation work and must not be reported as passing repository gates until scripts exist.
 - Unit: import mapping, normalization, hashes, filters, metrics, confidence, permission policies.
 - Integration: PostgreSQL migrations/RLS, OAuth callbacks with mocked providers, token encryption/refresh, connector pagination, job retry/idempotency, report snapshots.
 - Analysis evaluation: fixed labeled dataset and regression thresholds.
@@ -20,13 +20,15 @@ Separate connector tests from analysis fixtures. Google staging requires a real 
 
 ## Local gates and automation status
 
-The repository currently wires `npm run typecheck`, `npm test`, `npm run build`, and `./scripts/check-docs-sync.sh` as local commands. Run the relevant commands for each change and record any lane that was not run.
+The repository wires `npm run typecheck`, `npm test`, `npm run build`, `npm run build:server`, `npm audit`, Kubernetes rendering, and `./scripts/check-docs-sync.sh` into `.github/workflows/ci.yml`. The separate publication workflow builds Linux/amd64 web/API images and publishes only commit-SHA tags to GHCR on `main` or explicit dispatch.
 
-There is currently no repository CI workflow, lint/format script, dependency-audit script, merge-blocking browser E2E, scheduled provider smoke test, or automated diff gate. Those remain paid-beta delivery requirements; documentation must not describe them as active automation until their configuration exists and has been exercised.
+As of this repository change, the workflows exist but must still be exercised successfully on GitHub before they count as live release evidence. There is still no lint/format script, merge-blocking browser E2E, scheduled provider smoke test, or automated complete-diff gate. The production image build also audits its smaller runtime-only dependency installation separately.
 
 ## Release strategy
 
 Use migrations before app rollout, feature flags for new pipeline versions/connectors, and canary analysis runs. Retain the previous analysis version for comparison and rollback. Record release, pipeline, prompt, model, and schema versions on every run/report.
+
+For Bluerose staging, verify in this order: render manifests; create nonsecret configuration and out-of-band Secrets; start PostgreSQL and prove retained storage; run the checksum migration Job; deploy the single API and two web replicas; bootstrap the configured owner; test upload/analysis/evidence/report/PDF and pod restart; only then add Cloudflare Tunnel/DNS. Rollback uses the previous application image SHA and restores the immediately preceding tunnel configuration without changing Portfolio.
 
 ## Current MVP evidence
 
@@ -63,6 +65,7 @@ Use migrations before app rollout, feature flags for new pipeline versions/conne
 - Protected HTTP integration proves account/location discovery -> selection -> queued Google sync -> written and rating-only canonical inventory without returning credentials.
 - Automated axe scans cover the authenticated Voice Map landing, Pain Phrases, Outcomes, Objections, Emotional Triggers, Copy Lab, and Sources structures; color contrast remains a rendered/manual audit because JSDOM cannot calculate the rendered palette.
 - API hardening integration proves defensive no-store/nosniff headers and configured request-body limits. Cookie-authenticated mutations reject origins that do not equal `GARAXE_ALLOWED_ORIGIN` when configured.
+- Staging-auth integration proves the access-key route is absent outside the staging tier, rejects an incorrect key with a generic response, creates a normal opaque session for the configured owner, and never returns the key. AuthGate coverage proves staging uses this route while development retains loopback recovery.
 - Every Vitest lane forces `GARAXE_DB_DIR=memory://` before server database initialization; the test suite must never truncate or mutate `.local/pgdata`.
 - Browser QA on a freshly restarted server proves first-owner/local-session entry, the current multi-format Sources bundle, pasted mapping, safe missing-Google-config feedback, empty console logs, and no 390px page overflow.
 - Durable LLM queue integration tests run concurrent lease attempts against global and provider/model caps, prove exactly one admission, assert no partial request/token debit on saturation, verify `leased` and `running` jobs count while expired leases do not, and demonstrate that a saturated organization cannot prevent a second organization from receiving available provider capacity.

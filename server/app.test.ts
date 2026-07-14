@@ -119,6 +119,36 @@ describe('persistent project and import API', () => {
     expect(JSON.stringify(await response.json())).not.toContain('garaxe_session')
   })
 
+  it('restores the configured staging owner without exposing the access key', async () => {
+    process.env.GARAXE_DEPLOYMENT_TIER = 'staging'
+    process.env.GARAXE_STAGING_AUTH_ENABLED = 'true'
+    process.env.GARAXE_STAGING_OWNER_EMAIL = 'owner@example.com'
+    process.env.GARAXE_STAGING_ACCESS_KEY = 'staging-access-key-with-32-characters'
+    try {
+      const status = await fetch(`${baseUrl}/api/auth/status`).then((response) => response.json())
+      expect(status.data).toMatchObject({ needsBootstrap: false, stagingAccessEnabled: true })
+
+      const rejected = await fetch(`${baseUrl}/api/auth/staging-session`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', accessKey: 'incorrect' }),
+      })
+      expect(rejected.status).toBe(401)
+
+      const accepted = await fetch(`${baseUrl}/api/auth/staging-session`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@example.com', accessKey: process.env.GARAXE_STAGING_ACCESS_KEY }),
+      })
+      expect(accepted.status).toBe(201)
+      expect(accepted.headers.get('set-cookie')).toContain('garaxe_session=')
+      expect(JSON.stringify(await accepted.json())).not.toContain(process.env.GARAXE_STAGING_ACCESS_KEY)
+    } finally {
+      delete process.env.GARAXE_DEPLOYMENT_TIER
+      delete process.env.GARAXE_STAGING_AUTH_ENABLED
+      delete process.env.GARAXE_STAGING_OWNER_EMAIL
+      delete process.env.GARAXE_STAGING_ACCESS_KEY
+    }
+  })
+
   it('creates and lists projects', async () => {
     const created = await post('/api/projects', { name: 'Northstar Clinics', primaryDecision: 'operations' })
     expect(created.status).toBe(201)
@@ -145,6 +175,10 @@ describe('persistent project and import API', () => {
   })
 
   it('adds defensive API headers and rejects oversized request bodies', async () => {
+    const live = await fetch(`${baseUrl}/api/live`)
+    expect(live.status).toBe(200)
+    expect(await live.json()).toEqual({ status: 'alive' })
+
     const health = await fetch(`${baseUrl}/api/health`)
     expect(health.headers.get('x-content-type-options')).toBe('nosniff')
     expect(health.headers.get('cache-control')).toBe('no-store')

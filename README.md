@@ -26,7 +26,7 @@ npm run build
 ./scripts/check-docs-sync.sh
 ```
 
-The repository also contains CI verification and immutable-image publication workflows under `.github/workflows/`. Deployment manifests and the operator runbook live under `deploy/`; they target the Bluerose staging cluster and `voice.misakirose.com`, not the paid-beta production environment.
+The repository also contains CI verification and immutable-image publication workflows under `.github/workflows/`. Deployment manifests and the operator runbook live under `deploy/`; the verified Bluerose staging deployment is available at `voice.misakirose.com`, but it is not the paid-beta production environment.
 
 The current MVP implements the responsive editorial shell, persistent CSV/XLSX/JSON/paste ingestion and review inventory, immutable versioned analysis runs, exact-span signals, CPU semantic clustering, governed LLM cluster interpretation, Read/Investigate Voice Maps, append-only human curation with publication gates, immutable report versions, evidence-backed PDF export, organization-scoped sessions, and a managed-PostgreSQL adapter. Google OAuth, account/location discovery, explicit location selection, complete review sync, refresh/revoke, and access diagnostics are implemented and contract-tested; provider approval and live-profile proof remain external readiness gates.
 
@@ -38,6 +38,6 @@ The Bluerose staging tier uses a separate explicit access-key route for `test-us
 
 The current analysis pipeline is reproducible but not model-free. Deterministic preprocessing freezes dataset membership and exact evidence spans; pinned local ONNX models provide sentiment and embeddings; mutual-KNN communities and coherence gates form candidate themes; and the default local interpretation path uses the evaluated Qwen no-thinking configuration behind the governed LLM queue. Invalid or unavailable model output settles into an explicitly labelled deterministic fallback, never an unsupported claim. Run-scoped curation records approve, reject, edit, pin, exclude, merge, split, and mark-ready decisions as an append-only audit stream. Ready Read/Investigate views use the human-approved projection while retaining immutable machine artifacts and model provenance underneath.
 
-Next: complete and verify the Bluerose staging rollout, then apply the forced-RLS migration to a live managed database with a least-privilege runtime role and KMS-backed key rotation and prove the implemented Google OAuth/sync flow against an approved project plus a real verified managed profile.
+Next: operate and monitor the verified Bluerose staging deployment, then apply the forced-RLS migration to a live managed database with a least-privilege runtime role and KMS-backed key rotation and prove the implemented Google OAuth/sync flow against an approved project plus a real verified managed profile. The bounded staging rollout record is in `docs/deployment-evidence/2026-07-14-bluerose-staging.md`.
 
-See `docs/paid-beta-readiness.md` for the explicit release gate. The repository is a complete local MVP; the connected paid beta remains conditional on deployment, identity-provider, Google approval, and live-profile evidence.
+See `docs/paid-beta-readiness.md` for the explicit release gate. The repository is a complete local MVP with a verified public staging deployment; the connected paid beta remains conditional on production infrastructure, a production identity provider, Google approval, and live-profile evidence.

@@ -339,7 +339,7 @@ Implemented on 2026-07-13:
 
 ### Slice 26 — Bluerose staging deployment enablement
 
-Implemented in the repository on 2026-07-14; live rollout evidence remains separate until the target checks pass:
+Implemented in the repository and deployed to Bluerose staging on 2026-07-14. The bounded target evidence is recorded in `deployment-evidence/2026-07-14-bluerose-staging.md`:
 
 - Production build definitions emit a Vite/Nginx web image and a compiled Node API image. The repository workflow publishes both to GHCR with immutable source-commit tags only after it runs on `main`.
 - The API exposes process-only `/api/live` and database-aware `/api/health`, binds through explicit host/port configuration, closes listeners/database connections on termination, and uses an explicit PostgreSQL certificate policy.
@@ -348,3 +348,4 @@ Implemented in the repository on 2026-07-14; live rollout evidence remains separ
 - The staging database is intentionally self-hosted on the single Bluerose node and therefore does not satisfy the managed-PostgreSQL, independent-backup, HA, or paid-beta restore gates.
 - Cloudflare Tunnel publication occurs only after internal service verification and owner bootstrap. The existing Portfolio route and terminal 404 rule are protected dependencies.
 - The staging owner is `test-user@example.com`; a generated access key lives only in Kubernetes Secret material and is never committed or returned by the session API.
+- The live staging proof covers migration/RLS, owner closure, import through evidence-backed PDF, PostgreSQL and API restart persistence, dump/restore rehearsal, immutable-image rollback, public TLS, authenticated Cloudflare traversal, and Portfolio preservation. It does not close any paid-beta production gate.

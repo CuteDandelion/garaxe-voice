@@ -3,7 +3,7 @@
 Status: Conditional gate
 Last updated: 2026-07-14
 
-## Locally proven
+## Locally and staging proven
 
 - Evidence-first CSV/XLSX/JSON/paste and authorized Google ingestion through immutable report/PDF publication.
 - Versioned CPU semantic analysis with exact source spans, reciprocal-neighbour coherence gates, honest outliers, persisted diagnostics, an LLM publication-quality gate, and human approval; the local test suite includes adversarial boilerplate and surface-diverse cases while the runtime uses the pinned ONNX q8 artifact.
@@ -15,8 +15,8 @@ Last updated: 2026-07-14
 - Automated structural accessibility scans plus responsive/reduced-motion/focus contracts.
 - Bounded request bodies, no-store/nosniff API responses, restricted cookie-origin mutations, and sanitized operational errors.
 - Responsive editorial workflows at 390px and clean browser console checks for the completed product flows.
-- Locally runnable strict typecheck, unit/integration tests, production web/server builds, full dependency audit, Kubernetes rendering, and documentation sync commands. Repository CI and GHCR publication workflows now encode these lanes; successful GitHub execution remains required evidence.
-- Locally built non-root web/API images, pinned ReportLab, prewarmed pinned ONNX revisions, offline runtime inference, same-origin proxying, database-aware readiness, staging bootstrap closure, and staging access-key recovery. These local proofs do not establish target-cluster capacity, backup, restore, or paid-beta identity readiness.
+- Locally runnable strict typecheck, unit/integration tests, production web/server builds, full dependency audit, Kubernetes rendering, and documentation sync commands. Repository CI and GHCR publication workflows encode these lanes and passed for the deployed source SHA.
+- Non-root web/API images, pinned ReportLab, prewarmed pinned ONNX revisions, offline runtime inference, same-origin proxying, database-aware readiness, staging bootstrap closure, and staging access-key recovery are proven on Bluerose. The staging proof includes capacity observation, a bounded off-server dump/restore rehearsal, pod persistence, and application rollback; it does not establish managed backup, HA, disaster recovery, or paid-beta identity readiness. See `deployment-evidence/2026-07-14-bluerose-staging.md`.
 
 ## External release gates
 

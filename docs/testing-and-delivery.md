@@ -22,13 +22,15 @@ Separate connector tests from analysis fixtures. Google staging requires a real 
 
 The repository wires `npm run typecheck`, `npm test`, `npm run build`, `npm run build:server`, `npm audit`, Kubernetes rendering, and `./scripts/check-docs-sync.sh` into `.github/workflows/ci.yml`. CI provisions Python 3.11 and installs the pinned report-renderer requirements before integration tests so PDF coverage exercises the real renderer rather than relying on runner-global packages. The separate publication workflow builds Linux/amd64 web/API images and publishes only commit-SHA tags to GHCR on `main` or explicit dispatch.
 
-As of this repository change, the workflows exist but must still be exercised successfully on GitHub before they count as live release evidence. There is still no lint/format script, merge-blocking browser E2E, scheduled provider smoke test, or automated complete-diff gate. The production image build also audits its smaller runtime-only dependency installation separately.
+The CI and publication workflows passed on GitHub for deployed source SHA `3aaddeacdd3d32e7ed49878b699778c84f209347`; the published Linux/amd64 GHCR images were anonymously pullable before rollout. There is still no lint/format script, merge-blocking browser E2E, scheduled provider smoke test, or automated complete-diff gate. The production image build also audits its smaller runtime-only dependency installation separately.
 
 ## Release strategy
 
 Use migrations before app rollout, feature flags for new pipeline versions/connectors, and canary analysis runs. Retain the previous analysis version for comparison and rollback. Record release, pipeline, prompt, model, and schema versions on every run/report.
 
 For Bluerose staging, verify in this order: render manifests; create nonsecret configuration and out-of-band Secrets; start PostgreSQL and prove retained storage; run the checksum migration Job; deploy the single API and two web replicas; bootstrap the configured owner; test upload/analysis/evidence/report/PDF and pod restart; only then add Cloudflare Tunnel/DNS. Rollback uses the previous application image SHA and restores the immediately preceding tunnel configuration without changing Portfolio.
+
+That sequence completed on 2026-07-14. The exact bounded results, including restart, restore, rollback, Cloudflare, and Portfolio checks, are in `deployment-evidence/2026-07-14-bluerose-staging.md`; they are staging operations evidence, not paid-beta production evidence.
 
 ## Current MVP evidence
 

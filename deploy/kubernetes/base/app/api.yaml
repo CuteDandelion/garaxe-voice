@@ -59,6 +59,11 @@ spec:
                 secretKeyRef:
                   name: garaxe-secrets
                   key: staging-access-key
+            - name: OPENCODE_GO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: garaxe-secrets
+                  key: opencode-go-api-key
           ports:
             - name: http
               containerPort: 3001

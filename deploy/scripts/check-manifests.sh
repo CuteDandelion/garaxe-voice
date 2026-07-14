@@ -12,4 +12,12 @@ kubectl kustomize "$overlay/platform" >/dev/null
 kubectl kustomize "$overlay/database" >/dev/null
 kubectl kustomize "$overlay/migration" >/dev/null
 kubectl kustomize "$overlay/app" >/dev/null
+
+rendered="$temporary/bluerose.yaml"
+kubectl kustomize "$overlay" >"$rendered"
+grep -q 'GARAXE_LLM_ENRICHMENT_ENABLED: "true"' "$rendered"
+grep -q 'name: OPENCODE_GO_API_KEY' "$rendered"
+grep -q 'key: opencode-go-api-key' "$rendered"
+grep -q 'cidr: 0.0.0.0/0' "$rendered"
+grep -q 'port: 443' "$rendered"
 echo "Deployment manifests render without unresolved runtime placeholders."

@@ -32,6 +32,8 @@ For Bluerose staging, verify in this order: render manifests; create nonsecret c
 
 That sequence completed on 2026-07-14. The exact bounded results, including restart, restore, rollback, Cloudflare, and Portfolio checks, are in `deployment-evidence/2026-07-14-bluerose-staging.md`; they are staging operations evidence, not paid-beta production evidence.
 
+When enabling Bluerose LLM interpretation, first prove the provider credential against the configured model without logging it, add the missing Secret key without rotating existing database/auth material, apply the reviewed nonsecret policy and public-HTTPS egress rule, then roll the immutable API image. Acceptance requires a newly created supported-theme run with nonzero LLM jobs and attempts, successful validated candidates, `llm-interpreted-theme-engine-v1`, bounded clean logs/events, application health, and three unchanged Portfolio checks. Completed deterministic runs are not rewritten.
+
 ## Current MVP evidence
 
 - CSV parser tests cover quoted text, canonical mapping, written reviews, rating-only rows, duplicates, and invalid ratings.

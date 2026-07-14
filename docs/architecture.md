@@ -122,6 +122,8 @@ The staging API remains one 4 vCPU/8 GiB-requested replica because import, seman
 
 Application images use immutable Git commit tags. The API image contains the compiled server and migration entries, pinned ReportLab runtime, and prewarmed pinned ONNX model cache; runtime model downloads are disabled. A migration Job must complete before the API deployment is applied. Secrets are created out of band and referenced by name.
 
+Bluerose cluster interpretation uses the API-attached durable poller and a server-side OpenCode Go credential. Its staging NetworkPolicy permits public IPv4 TCP 443 while excluding private, local, test, and reserved networks because standard Kubernetes NetworkPolicy cannot select a provider FQDN. The application adapter owns the fixed provider base URL and users cannot supply arbitrary destinations. Production still requires a domain-aware egress proxy or equivalent control, independent workers, and managed secret rotation.
+
 `GARAXE_DATABASE_SSL_MODE=disable` is an explicit staging exception only for the NetworkPolicy-restricted in-cluster PostgreSQL hop. Production and external database connections default to certificate verification and may load a provider CA bundle. `NODE_ENV` remains `production` in staging so secure cookies and production-only route restrictions stay active.
 
 ## Scale posture

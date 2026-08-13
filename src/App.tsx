@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { Icon } from './components/Icon'
 import { ProjectDialog } from './components/ProjectDialog'
+import { PublicDemo, PublicLanding } from './components/PublicLanding'
 import { ReviewInventory, type ReviewInventoryFilters, type ReviewInventoryItem } from './components/ReviewInventory'
 import { AnalysisWorkspaceContainer } from './components/AnalysisWorkspaceContainer'
 import { VoiceMapWorkspaceContainer } from './components/VoiceMapWorkspaceContainer'
@@ -13,6 +14,7 @@ import { AuthGate } from './components/AuthGate'
 import { Sidebar } from './components/Sidebar'
 import { SourcesWorkspace } from './components/SourcesWorkspace'
 import { Topbar } from './components/Topbar'
+import { WaitlistAdminWorkspace } from './components/WaitlistAdminWorkspace'
 import { createAnalysisRun, createProject, getCurrentAuth, getFilteredReviewSummary, getReviewDetail, listProjects, listReviews, logout, waitForAnalysisRun, type AuthContext, type Project, type ReviewInventoryQuery, type ReviewRecord } from './lib/api'
 
 function inventoryItem(review: ReviewRecord): ReviewInventoryItem {
@@ -37,8 +39,8 @@ function inventoryItem(review: ReviewRecord): ReviewInventoryItem {
   }
 }
 
-function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
-  const [activePage, setActivePage] = useState<'VoiceMap' | 'PainPhrases' | 'Outcomes' | 'Objections' | 'EmotionalTriggers' | 'CopyLab' | 'Sources' | 'Reviews' | 'Analysis' | 'Curation' | 'Reports'>('VoiceMap')
+function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome: () => void }) {
+  const [activePage, setActivePage] = useState<'Overview' | 'VoiceMap' | 'PainPhrases' | 'Outcomes' | 'Objections' | 'EmotionalTriggers' | 'CopyLab' | 'Sources' | 'Reviews' | 'Analysis' | 'Curation' | 'Reports' | 'Waitlist'>('Overview')
   const [menuOpen, setMenuOpen] = useState(false)
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [projectName, setProjectName] = useState('Acme Software')
@@ -52,8 +54,11 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
   const [projectReviewSummary, setProjectReviewSummary] = useState({ total: 0, providers: 0 })
   const [reviewDateRange, setReviewDateRange] = useState<{ from: string | null; to: string | null }>({ from: null, to: null })
   const [analysisDateRange, setAnalysisDateRange] = useState<{ from: string | null; to: string | null }>({ from: null, to: null })
-  const [dateFilterBusy, setDateFilterBusy] = useState(false)
+  const [dateFilterProjectId, setDateFilterProjectId] = useState<string | null>(null)
+  const projectIdRef = useRef(projectId)
+  projectIdRef.current = projectId
   const [analysisRefreshKey, setAnalysisRefreshKey] = useState(0)
+  const [voiceMapMode, setVoiceMapMode] = useState<'read' | 'investigate'>('read')
   const [analysisSummary, setAnalysisSummary] = useState<{ confidence: string | null; createdAt: string | null }>({ confidence: null, createdAt: null })
   const [reviewOptions, setReviewOptions] = useState({ providers: [] as { value: string; label: string; count: number }[], entities: [] as { value: string; label: string; count: number }[], languages: [] as { value: string; label: string; count: number }[] })
   const [reviewCursor, setReviewCursor] = useState<string | null>(null)
@@ -73,12 +78,11 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
   useEffect(() => {
     let active = true
     void Promise.all([listProjects(), getCurrentAuth()])
-      .then(async ([existingProjects, currentAuth]) => {
-        const availableProjects = existingProjects.length ? existingProjects : [await createProject('Acme Software', 'positioning', true)]
+      .then(([availableProjects, currentAuth]) => {
         if (!active) return
         setProjects(availableProjects)
-        setProjectId(availableProjects[0].id)
-        setProjectName(availableProjects[0].name)
+        setProjectId(availableProjects[0]?.id || null)
+        if (availableProjects[0]) setProjectName(availableProjects[0].name)
         setAuth(currentAuth)
       })
       .catch(() => undefined)
@@ -96,7 +100,7 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
     setReviewCursorHistory([])
     setNextReviewCursor(null)
     setSelectedReview(null)
-    setActivePage('VoiceMap')
+    setActivePage('Overview')
     setMenuOpen(false)
   }, [projects])
 
@@ -107,19 +111,21 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
 
   const applyDateRange = useCallback(async ({ from, to }: { from: string; to: string }) => {
     if (!projectId) throw new Error('Select a project before filtering dates.')
-    setDateFilterBusy(true)
+    const requestedProjectId = projectId
+    setDateFilterProjectId(requestedProjectId)
     try {
-      const created = await createAnalysisRun(projectId, {
+      const created = await createAnalysisRun(requestedProjectId, {
         objective: 'full_voice_map', dateFrom: from || undefined, dateTo: to || undefined,
         entities: [], ratings: [], languages: [], writtenOnly: true, minTextLength: 3,
       })
       const completed = await waitForAnalysisRun(created.id, 500)
       if (completed.status !== 'completed') throw new Error(completed.errorMessage || 'The filtered analysis failed.')
+      if (projectIdRef.current !== requestedProjectId) return
       setAnalysisDateRange({ from: from || reviewDateRange.from, to: to || reviewDateRange.to })
-      setActivePage('VoiceMap')
+      setActivePage('Overview')
       setAnalysisRefreshKey((value) => value + 1)
     } finally {
-      setDateFilterBusy(false)
+      setDateFilterProjectId((current) => current === requestedProjectId ? null : current)
     }
   }, [projectId, reviewDateRange.from, reviewDateRange.to])
 
@@ -232,12 +238,14 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
         projectId={projectId}
         dataset={{ reviews: projectReviewSummary.total, sources: projectReviewSummary.providers, confidence: analysisSummary.confidence }}
         account={account}
+        waitlistMonitoring={auth?.capabilities?.waitlistMonitoring === true}
         activeLabel={activeLabel}
         onProjectChange={selectProject}
         onNewProject={() => setProjectDialogOpen(true)}
         onLogout={() => void signOut()}
         onNavigate={(label) => {
-          if (label === 'Voice Map') setActivePage('VoiceMap')
+          if (label === 'Overview') setActivePage('Overview')
+          if (label === 'Voice Map') { setVoiceMapMode('read'); setActivePage('VoiceMap') }
           if (label === 'Pain Phrases') setActivePage('PainPhrases')
           if (label === 'Outcomes') setActivePage('Outcomes')
           if (label === 'Objections') setActivePage('Objections')
@@ -248,12 +256,13 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
           if (label === 'Analysis') setActivePage('Analysis')
           if (label === 'Curation') setActivePage('Curation')
           if (label === 'Reports') setActivePage('Reports')
+          if (label === 'Waitlist') setActivePage('Waitlist')
           setMenuOpen(false)
         }}
       />
       {menuOpen ? <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
       <div className="app-frame">
-        <Topbar projects={projects} projectId={projectId} title={activeLabel} dateRange={{ from: analysisDateRange.from || reviewDateRange.from, to: analysisDateRange.to || reviewDateRange.to }} availableDateRange={reviewDateRange} userInitials={userInitials} account={account} dateFilterBusy={dateFilterBusy} onProjectChange={selectProject} onDateRangeChange={applyDateRange} onLogout={() => void signOut()} onMenu={() => setMenuOpen(true)} onExport={() => setActivePage('Reports')} />
+        <Topbar projects={projects} projectId={projectId} title={activeLabel} dateRange={{ from: analysisDateRange.from || reviewDateRange.from, to: analysisDateRange.to || reviewDateRange.to }} availableDateRange={reviewDateRange} userInitials={userInitials} account={account} dateFilterBusy={dateFilterProjectId === projectId} onProjectChange={selectProject} onDateRangeChange={applyDateRange} onLogout={() => void signOut()} onMenu={() => setMenuOpen(true)} onExport={() => setActivePage('Reports')} onHome={onHome} />
         <main>
           {activePage === 'Sources' ? (
             <SourcesWorkspace projectId={projectId} onImported={(count) => { setImportedCount(count); setActivePage('Reviews') }} />
@@ -278,11 +287,13 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
               onRetry={() => void loadInventory()}
             />
           ) : activePage === 'Analysis' ? (
-            <AnalysisWorkspaceContainer projectId={projectId} onOpenReview={() => setActivePage('Reviews')} />
+            <AnalysisWorkspaceContainer projectId={projectId} onOpenReview={() => setActivePage('Reviews')} onOpenOverview={() => setActivePage('Overview')} />
           ) : activePage === 'Curation' ? (
             <CurationWorkspaceContainer projectId={projectId} />
           ) : activePage === 'Reports' ? (
             <ReportsWorkspaceContainer projectId={projectId} />
+          ) : activePage === 'Waitlist' ? (
+            <WaitlistAdminWorkspace />
           ) : activePage === 'PainPhrases' ? (
             <SignalWorkspaceContainer projectId={projectId} kind="pain" onOpenReview={openReviewById} />
           ) : activePage === 'Outcomes' ? (
@@ -293,8 +304,8 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
             <SignalWorkspaceContainer projectId={projectId} kind="emotion" onOpenReview={openReviewById} />
           ) : activePage === 'CopyLab' ? (
             <CopyLabWorkspaceContainer projectId={projectId} onOpenReview={openReviewById} />
-          ) : activePage === 'VoiceMap' ? (
-            <VoiceMapWorkspaceContainer projectId={projectId} refreshKey={analysisRefreshKey} onOpenReview={openReviewById} onRunSummary={handleRunSummary} />
+          ) : activePage === 'Overview' || activePage === 'VoiceMap' ? (
+            <VoiceMapWorkspaceContainer projectId={projectId} section={activePage === 'Overview' ? 'overview' : 'voice-map'} initialMode={voiceMapMode} refreshKey={analysisRefreshKey} onOpenReview={openReviewById} onOpenCuration={() => setActivePage('Curation')} onOpenVoiceMap={(mode) => { setVoiceMapMode(mode); setActivePage('VoiceMap') }} onRunSummary={handleRunSummary} />
           ) : null}
         </main>
       </div>
@@ -321,5 +332,20 @@ function WorkspaceApp({ onSignedOut }: { onSignedOut: () => void }) {
 }
 
 export function App() {
-  return <AuthGate>{(onSignedOut) => <WorkspaceApp onSignedOut={onSignedOut} />}</AuthGate>
+  const initialView = window.location.hash === '#demo' ? 'demo' : window.location.hash === '#login' || window.location.search.includes('google=connected') ? 'login' : 'home'
+  const [view, setView] = useState<'home' | 'demo' | 'login'>(initialView)
+  const navigate = (next: 'home' | 'demo' | 'login') => {
+    window.history.replaceState(null, '', next === 'home' ? window.location.pathname : `#${next}`)
+    setView(next)
+  }
+
+  useEffect(() => {
+    const onHashChange = () => setView(window.location.hash === '#demo' ? 'demo' : window.location.hash === '#login' ? 'login' : 'home')
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  if (view === 'home') return <PublicLanding onLogin={() => navigate('login')} onDemo={() => navigate('demo')} />
+  if (view === 'demo') return <PublicDemo onBack={() => navigate('home')} onLogin={() => navigate('login')} />
+  return <AuthGate>{(onSignedOut) => <WorkspaceApp onSignedOut={onSignedOut} onHome={() => navigate('home')} />}</AuthGate>
 }

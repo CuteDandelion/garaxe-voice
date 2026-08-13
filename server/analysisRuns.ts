@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Database } from './database'
+import type { Database, DatabaseClient } from './database'
 import { preprocessReviews, type PreprocessingConfig, type PreprocessingReview } from './preprocessing'
 import { analyzeSemantically, createDeterministicTestEmbeddingProvider, DETERMINISTIC_TEST_CLUSTERING_OPTIONS, SEMANTIC_ANALYSIS_VERSION } from './semanticAnalysis'
 import { formThemes, synthesizeVoiceMap, THEME_ENGINE_VERSION } from './themeEngine'
@@ -91,7 +91,7 @@ function preprocessingConfiguration(configuration: AnalysisConfiguration): Prepr
   }
 }
 
-export async function createAnalysisRun(database: Database, projectId: string, configuration: AnalysisConfiguration) {
+export async function createAnalysisRun(database: DatabaseClient, projectId: string, configuration: AnalysisConfiguration) {
   const id = randomUUID()
   const snapshot = structuredClone(configuration)
   await database.query(

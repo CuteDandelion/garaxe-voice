@@ -1,11 +1,13 @@
 import type { ColumnMapping } from './csv'
+import { getSupabaseAccessToken, signOutSupabase } from './supabaseAuth'
 
 type ApiResponse<T> = { data: T }
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const accessToken = await getSupabaseAccessToken()
   const response = await fetch(path, {
     ...options,
-    headers: { 'content-type': 'application/json', ...options?.headers },
+    headers: { 'content-type': 'application/json', ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}), ...options?.headers },
   })
   const payload = await response.json() as ApiResponse<T> & { error?: { message?: string } }
   if (!response.ok) throw new Error(payload.error?.message || 'Request failed.')
@@ -17,13 +19,25 @@ export type AuthContext = {
   sessionId: string
   user: { id: string; email: string; displayName: string }
   memberships: Array<{ organizationId: string; organizationName: string; role: 'owner' | 'admin' | 'analyst' | 'viewer' }>
+  capabilities?: { waitlistMonitoring?: boolean }
 }
 
 export const getAuthStatus = () => apiRequest<AuthStatus>('/api/auth/status')
 export const getCurrentAuth = () => apiRequest<AuthContext>('/api/auth/me')
-export const logout = () => apiRequest<{ signedOut: boolean }>('/api/auth/logout', { method: 'POST' })
+export const logout = async () => await signOutSupabase()
+  ? { signedOut: true }
+  : apiRequest<{ signedOut: boolean }>('/api/auth/logout', { method: 'POST' })
 export const resumeLocalSession = (email: string) => apiRequest<{ expiresAt: string }>('/api/auth/local-session', { method: 'POST', body: JSON.stringify({ email }) })
 export const resumeStagingSession = (email: string, accessKey: string) => apiRequest<{ expiresAt: string }>('/api/auth/staging-session', { method: 'POST', body: JSON.stringify({ email, accessKey }) })
+export const joinWaitlist = (name: string, email: string) => apiRequest<{ status: 'recorded' }>('/api/waitlist', {
+  method: 'POST', body: JSON.stringify({ name, email, consentVersion: 'voice-lab-waitlist-v1' }),
+})
+export type WaitlistPage = {
+  total: number; limit: number; offset: number
+  items: Array<{ name: string; email: string; consentVersion: string; createdAt: string }>
+}
+export const listWaitlistSignups = (limit = 25, offset = 0) =>
+  apiRequest<WaitlistPage>(`/api/admin/waitlist?limit=${limit}&offset=${offset}`)
 export const bootstrapOwner = (input: { email: string; displayName: string; organizationName: string }) =>
   apiRequest<{ userId: string; organizationId: string; expiresAt: string }>('/api/auth/bootstrap', {
     method: 'POST', body: JSON.stringify(input),
@@ -228,6 +242,34 @@ export type AnalysisMembershipRecord = {
   entityName: string | null
 }
 
+export type PrimarySemanticCategory = 'pain' | 'desired_outcome' | 'objection' | 'emotion' | 'other'
+export type VoiceSentiment = 'positive' | 'neutral' | 'negative'
+
+export type OverviewBriefItem = { title: string; narrative: string; themeIds: string[] }
+export type OverviewNextAction = { title: string; rationale: string; themeIds: string[] }
+export type OverviewBriefResult = {
+  status: 'ready' | 'evidence_only'
+  schemaVersion: 'overview-intelligence-v1'
+  brief: null | {
+    understood: OverviewBriefItem
+    majorOpportunity: OverviewBriefItem | null
+    majorRisk: OverviewBriefItem | null
+    salesImplications: OverviewBriefItem[]
+    marketingImplications: OverviewBriefItem[]
+    nextActions: OverviewNextAction[]
+  }
+  message?: string
+}
+
+export type AnalysisCoverageItem = {
+  reviewId: string
+  originalText: string
+  disposition: 'recurring' | 'emerging' | 'user_curated' | 'error' | 'excluded'
+  reason: string
+  themeIds: string[]
+  signals: Array<{ label: string; topic?: string | null; signalType: PrimarySemanticCategory; signalTypes?: PrimarySemanticCategory[]; category: PrimarySemanticCategory; categories?: PrimarySemanticCategory[]; sentiment: VoiceSentiment; confidence: number; quote: string; interpretedBy: 'analysis_engine' | 'deterministic' }>
+}
+
 export type VoiceMapArtifactResponse = {
   run: AnalysisRun
   synthesisVersion: string
@@ -254,8 +296,12 @@ export type VoiceMapArtifactResponse = {
       interpretationCandidate?: {
         label: string
         aspect: string
+        topic?: string
+        primaryCategory?: PrimarySemanticCategory
+        primarySignalType?: PrimarySemanticCategory
+        sentiment?: VoiceSentiment
         evaluation: 'praise' | 'pain' | 'mixed'
-        signalTypes: Array<'pain' | 'desired_outcome' | 'objection' | 'praise' | 'purchase_trigger' | 'operational_issue' | 'emotion'>
+        signalTypes: PrimarySemanticCategory[]
         rootCause: string | null
         consequence: string | null
         confidence: number
@@ -275,15 +321,17 @@ export type VoiceMapArtifactResponse = {
 
 type EngineInsight = { title: string; narrative: string; supportingThemeIds: string[]; evidenceReviewCount: number; confidence: string }
 
-export type CurationActionType = 'approve_theme' | 'reject_theme' | 'edit_theme' | 'pin_evidence' | 'exclude_evidence' | 'merge_themes' | 'split_theme' | 'mark_ready'
+export type CurationActionType = 'approve_theme' | 'reject_theme' | 'edit_theme' | 'pin_evidence' | 'exclude_evidence' | 'merge_themes' | 'split_theme' | 'create_custom_theme' | 'move_evidence' | 'restore_revision' | 'mark_ready'
 export type CurationSession = { id: string; analysisRunId: string; status: 'in_progress' | 'ready'; revision: number; createdAt: string; readyAt: string | null }
 export type CurationAction = { id: string; sessionId: string; analysisRunId: string; sequence: number; actionType: CurationActionType; payload: Record<string, unknown>; createdAt: string }
 export type CuratedEvidence = { signalId: string; reviewId: string; quote: string; quoteStart: number; quoteEnd: number; originalText: string; entity: string | null; provider: string; rating: number | null; sourceCreatedAt: string | null; confidence: number; pinned: boolean; excluded: boolean }
 export type EffectiveTheme = {
   id: string; machineThemeId: string | null; originThemeIds: string[]; rank: number; name: string; summary: string
-  type: string; sentiment: string; confidence: string; validationStatus: string
+  topic?: string; primarySignalType?: PrimarySemanticCategory; signalTaxonomyVersion?: string; proposedTypeLabel?: string | null; type: string; signalTypes?: string[]; categories?: PrimarySemanticCategory[]; sentiment: VoiceSentiment; confidence: string; validationStatus: string
   status: 'pending' | 'approved' | 'rejected' | 'consumed' | 'not_reviewable'
   evidence: CuratedEvidence[]; groupingSuggestion: { action: 'split'; reason: string } | null; publishable: boolean
+  origin: 'model_confirmed' | 'user_curated'
+  provenance: { createdBy: string | null; createdAt: string | null; sourceReviewIds: string[] }
 }
 export type CurationProjection = {
   session: CurationSession | null
@@ -327,10 +375,10 @@ export type ReportRecord = {
   }
 }
 
-export function createProject(name: string, primaryDecision = 'explore', bootstrap = false) {
+export function createProject(name: string, primaryDecision = 'explore') {
   return apiRequest<Project>('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({ name, primaryDecision, bootstrap }),
+    body: JSON.stringify({ name, primaryDecision }),
   })
 }
 
@@ -346,6 +394,18 @@ export function getCurationProjection(runId: string) {
   return apiRequest<CurationProjection>(`/api/analysis-runs/${runId}/curation`)
 }
 
+export function getDemoCurationProjection(token: string) {
+  return apiRequest<CurationProjection>(`/api/demo/analysis-runs/${token}/curation`)
+}
+
+export function getOverviewBrief(runId: string) {
+  return apiRequest<OverviewBriefResult>(`/api/analysis-runs/${runId}/overview`)
+}
+
+export function getDemoOverviewBrief(token: string) {
+  return apiRequest<OverviewBriefResult>(`/api/demo/analysis-runs/${token}/overview`)
+}
+
 export function createReport(input: { projectId: string; analysisRunId: string; title?: string }) {
   return apiRequest<ReportRecord>('/api/reports', { method: 'POST', body: JSON.stringify(input) })
 }
@@ -359,7 +419,10 @@ export function getReport(reportId: string) {
 }
 
 export async function downloadReportPdf(reportId: string, title: string) {
-  const response = await fetch(`/api/reports/${reportId}/pdf`)
+  const accessToken = await getSupabaseAccessToken()
+  const response = await fetch(`/api/reports/${reportId}/pdf`, {
+    headers: { ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
+  })
   if (!response.ok) throw new Error('PDF download failed.')
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)
@@ -372,6 +435,12 @@ export async function downloadReportPdf(reportId: string, title: string) {
 
 export function appendCurationAction(sessionId: string, actionType: CurationActionType, payload: Record<string, unknown>) {
   return apiRequest<{ action: CurationAction; projection: CurationProjection }>(`/api/curation-sessions/${sessionId}/actions`, {
+    method: 'POST', body: JSON.stringify({ actionType, payload }),
+  })
+}
+
+export function appendDemoCurationAction(token: string, actionType: CurationActionType, payload: Record<string, unknown>) {
+  return apiRequest<{ action: CurationAction; projection: CurationProjection }>(`/api/demo/analysis-runs/${token}/curation`, {
     method: 'POST', body: JSON.stringify({ actionType, payload }),
   })
 }
@@ -446,6 +515,10 @@ export function listAnalysisRuns(projectId: string) {
 
 export function listAnalysisMembership(runId: string, limit = 500) {
   return apiRequest<AnalysisMembershipRecord[]>(`/api/analysis-runs/${runId}/reviews?limit=${limit}`)
+}
+
+export function getAnalysisCoverage(runId: string) {
+  return apiRequest<AnalysisCoverageItem[]>(`/api/analysis-runs/${runId}/coverage`)
 }
 
 export async function waitForAnalysisRun(runId: string, intervalMs = 500, onProgress?: (run: AnalysisRun) => void) {

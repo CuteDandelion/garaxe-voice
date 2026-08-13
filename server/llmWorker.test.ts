@@ -100,6 +100,18 @@ describe('LlmWorkerRuntime', () => {
     expect(await queue.getJobState(created.id)).toBe('fallback_completed')
   })
 
+  it('hands an exhausted batch to bounded recovery before completing fallback', async () => {
+    const created = await enqueue('7'.repeat(64), { maxAttempts: 1 })
+    const recoverTerminalFailure = vi.fn(async () => true)
+    const provider = { complete: vi.fn(async () => { throw new LlmProviderError('PROVIDER_UNAVAILABLE', 'safe') }) }
+
+    expect(await runtime(provider, { recoverTerminalFailure }).runOnce()).toMatchObject({
+      type: 'fallback', jobId: created.id, reason: 'RECOVERY_QUEUED',
+    })
+    expect(recoverTerminalFailure).toHaveBeenCalledWith(expect.objectContaining({ id: created.id }), 'RETRY_EXHAUSTED')
+    expect(await queue.getJobState(created.id)).toBe('fallback_completed')
+  })
+
   it('opens the circuit at its threshold and permits only one half-open probe after cooldown', async () => {
     const provider = { complete: vi.fn(async () => { throw new LlmProviderError('PROVIDER_UNAVAILABLE', 'safe') }) }
     const first = await enqueue('c'.repeat(64), { maxAttempts: 1 })

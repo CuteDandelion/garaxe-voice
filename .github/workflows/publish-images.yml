@@ -44,5 +44,9 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            VITE_SUPABASE_URL=${{ matrix.component == 'web' && vars.VITE_SUPABASE_URL || '' }}
+            VITE_SUPABASE_PUBLISHABLE_KEY=${{ matrix.component == 'web' && secrets.VITE_SUPABASE_PUBLISHABLE_KEY || '' }}
+            VITE_LOCAL_QA_AUTH_ENABLED=false
           cache-from: type=gha,scope=garaxe-${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=garaxe-${{ matrix.component }}

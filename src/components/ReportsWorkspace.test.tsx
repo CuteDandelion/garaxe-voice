@@ -55,4 +55,10 @@ describe('ReportsWorkspace', () => {
     expect(screen.getByRole('button', { name: 'Create report' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('Mark the curation run ready')
   })
+
+  it('stays inside the dashboard main landmark', () => {
+    const { container } = render(<ReportsWorkspace {...props()} />)
+    expect(container.querySelector('main')).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Reports workspace' })).toBeInTheDocument()
+  })
 })

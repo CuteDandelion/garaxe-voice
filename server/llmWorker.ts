@@ -29,6 +29,7 @@ export type LlmWorkerOptions = {
   leaseMs?: number
   maxBackoffMs?: number
   fallbackBudgetWait?: boolean
+  recoverTerminalFailure?: (job: LeasedLlmJob, reason: string) => Promise<boolean>
   onEvent?: (event: WorkerEvent) => void
 }
 
@@ -172,8 +173,10 @@ export class LlmWorkerRuntime {
       })
       const state = await this.options.queue.getJobState(lease.id)
       if (!failure.retryable || state === 'dead_lettered') {
-        await this.options.queue.completeFallback(lease.id, failedAt, failure.retryable ? 'RETRY_EXHAUSTED' : failure.code)
-        return this.emit({ type: 'fallback', jobId: lease.id, provider: lease.provider, model: lease.model, reason: failure.retryable ? 'RETRY_EXHAUSTED' : failure.code })
+        const reason = failure.retryable ? 'RETRY_EXHAUSTED' : failure.code
+        const recoveryQueued = await this.options.recoverTerminalFailure?.(lease, reason).catch(() => false) ?? false
+        await this.options.queue.completeFallback(lease.id, failedAt, reason)
+        return this.emit({ type: 'fallback', jobId: lease.id, provider: lease.provider, model: lease.model, reason: recoveryQueued ? 'RECOVERY_QUEUED' : reason })
       }
       return this.emit({ type: 'retry', jobId: lease.id, provider: lease.provider, model: lease.model, reason: failure.code })
     } finally {

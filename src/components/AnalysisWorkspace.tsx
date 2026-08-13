@@ -104,6 +104,7 @@ export type AnalysisWorkspaceProps = {
   onRun: () => void
   onRetry?: () => void
   onOpenReview?: (reviewId: string) => void
+  onOpenOverview?: () => void
 }
 
 const objectiveLabels: Record<AnalysisObjective, string> = {
@@ -227,7 +228,7 @@ function ConfigureAnalysis({
           <Icon icon={ShieldCheck} size={24} />
           <p className="analysis-workspace__label">Reproducible by design</p>
           <blockquote>“The dataset is decided before the conclusion is written.”</blockquote>
-          <p>When this run starts, its filters and membership become immutable. A changed question creates a new run—not a silent rewrite.</p>
+          <p>A new run uses all current project feedback that matches these filters. Its membership becomes immutable; earlier runs and reports stay unchanged.</p>
         </aside>
       </div>
     </>
@@ -243,19 +244,18 @@ function elapsedLabel(startedAt: string | null | undefined) {
 }
 
 function progressStatus(llmProgress: AnalysisLlmProgress) {
-  const waiting = llmProgress.waiting + llmProgress.queued
   const outcomes = [
-    llmProgress.fallback > 0 ? `${llmProgress.fallback} job${llmProgress.fallback === 1 ? '' : 's'} used governed fallback.` : '',
-    llmProgress.failed > 0 ? `${llmProgress.failed} job${llmProgress.failed === 1 ? '' : 's'} failed without a usable fallback.` : '',
+    llmProgress.fallback > 0 ? 'Some feedback needed an alternate analysis pass.' : '',
+    llmProgress.failed > 0 ? 'Some feedback could not be interpreted. The run will not publish an incomplete map.' : '',
   ].filter(Boolean).join(' ')
   if (llmProgress.inFlight === 0 && llmProgress.remaining > 0) {
-    return `${waiting} job${waiting === 1 ? '' : 's'} are waiting for provider capacity; retries are automatic.${outcomes ? ` ${outcomes}` : ''}`
+    return `Analysis is waiting briefly for capacity and will continue automatically.${outcomes ? ` ${outcomes}` : ''}`
   }
-  return outcomes || 'All finished jobs have passed without terminal fallback.'
+  return outcomes || 'Analysis is progressing. Results appear only when every valid comment is covered.'
 }
 
 function ProcessingAnalysis({
-  stages = [], llmProgress, activeRunId, activeRunStartedAt,
+  stages = [], llmProgress, activeRunStartedAt,
 }: Pick<AnalysisWorkspaceProps, 'stages' | 'llmProgress' | 'activeRunId' | 'activeRunStartedAt'>) {
   const active = stages.find((stage) => stage.state === 'active')
   return (
@@ -263,30 +263,24 @@ function ProcessingAnalysis({
       <span className="analysis-workspace__processing-mark" aria-hidden="true"><span /></span>
       <p className="analysis-workspace__label">Analysis in progress</p>
       <h1>{active?.label ?? 'Assembling the evidence.'}</h1>
-      <p>{active?.detail ?? 'Every review is being assigned an explicit inclusion decision before interpretation begins.'}</p>
+      <p>{active?.detail ?? 'Each comment keeps its exact source evidence throughout analysis.'}</p>
       {llmProgress ? (
-        <section className="analysis-workspace__llm-progress" aria-label="LLM interpretation progress">
+        <section className="analysis-workspace__llm-progress" aria-label="Voice Map intelligence progress">
           <header>
-            <div><p className="analysis-workspace__label">LLM interpretation</p><strong>{llmProgress.percent}%</strong></div>
+            <div><p className="analysis-workspace__label">Voice Map intelligence</p><strong>{llmProgress.percent}%</strong></div>
             <span>{elapsedLabel(activeRunStartedAt)}</span>
           </header>
           <div
             className="analysis-workspace__progress-track"
             role="progressbar"
-            aria-label={`${llmProgress.completed} of ${llmProgress.total} LLM jobs completed`}
+            aria-label={`Analysis progress: ${llmProgress.percent}%`}
             aria-valuemin={0}
-            aria-valuemax={llmProgress.total}
-            aria-valuenow={llmProgress.completed}
+            aria-valuemax={100}
+            aria-valuenow={llmProgress.percent}
           ><i style={{ width: `${llmProgress.percent}%` }} /></div>
-          <dl>
-            <div><dt>Jobs complete</dt><dd>{llmProgress.completed}<small> / {llmProgress.total}</small></dd></div>
-            <div><dt>Remaining</dt><dd>{llmProgress.remaining}</dd></div>
-            <div><dt>Interpreted themes</dt><dd>{llmProgress.interpretedThemes}<small> / {llmProgress.validatedThemes}</small></dd></div>
-            <div><dt>Active / waiting</dt><dd>{llmProgress.inFlight}<small> / {llmProgress.waiting + llmProgress.queued}</small></dd></div>
-          </dl>
           <footer>
             <span>{progressStatus(llmProgress)}</span>
-            <span>{llmProgress.model || 'Default model'}{activeRunId ? ` · run ${activeRunId.slice(0, 8)}` : ''}</span>
+            <span>Voice Map intelligence</span>
           </footer>
         </section>
       ) : null}
@@ -302,7 +296,7 @@ function ProcessingAnalysis({
   )
 }
 
-function CompletedAnalysis({ report, onOpenReview }: Pick<AnalysisWorkspaceProps, 'report' | 'onOpenReview'>) {
+function CompletedAnalysis({ report, onOpenReview, onOpenOverview }: Pick<AnalysisWorkspaceProps, 'report' | 'onOpenReview' | 'onOpenOverview'>) {
   if (!report) return null
   const maxReason = Math.max(1, ...report.exclusionReasons.map((item) => item.count))
   const maxLanguage = Math.max(1, ...report.languages.map((item) => item.count))
@@ -314,7 +308,8 @@ function CompletedAnalysis({ report, onOpenReview }: Pick<AnalysisWorkspaceProps
           <p className="analysis-workspace__label">Data quality report</p>
           <h1>{report.included.toLocaleString()} reviews form the evidence base.</h1>
         </div>
-        <div className="analysis-workspace__run-stamp"><Icon icon={ShieldCheck} size={18} /><span>Immutable run</span><strong>{report.runId}</strong><small>{formatDate(report.createdAt)}</small></div>
+        <div className="analysis-workspace__run-stamp"><Icon icon={ShieldCheck} size={18} /><span>Saved evidence set</span><strong>Immutable</strong><small>{formatDate(report.createdAt)}</small></div>
+        {onOpenOverview ? <button type="button" className="analysis-workspace__overview-button" onClick={onOpenOverview}>Open Overview <ArrowRight size={15} aria-hidden="true" /></button> : null}
       </header>
 
       <dl className="analysis-workspace__metrics" aria-label="Data quality summary">
@@ -345,15 +340,10 @@ function CompletedAnalysis({ report, onOpenReview }: Pick<AnalysisWorkspaceProps
         <div><dt>Average text length</dt><dd>{report.averageTextLength} characters</dd></div>
         <div><dt>Median text length</dt><dd>{report.medianTextLength} characters</dd></div>
         <div><dt>Duplicate groups</dt><dd>{report.duplicateGroups}</dd></div>
-        <div><dt>Configuration</dt><dd>{report.configurationVersion}</dd></div>
-        <div><dt>Pipeline</dt><dd>{report.pipelineVersion}</dd></div>
         {report.semanticAnalysis ? <>
-          <div><dt>Semantic clusters</dt><dd>{report.semanticAnalysis.clusterCount}</dd></div>
-          <div><dt>Clustered claims</dt><dd>{report.semanticAnalysis.clusteredSegmentCount} / {report.semanticAnalysis.segmentCount}</dd></div>
-          <div><dt>Unclustered claims</dt><dd>{report.semanticAnalysis.outlierCount}</dd></div>
-          <div><dt>Grouping checks</dt><dd>{report.semanticAnalysis.ambiguousSegmentCount}</dd></div>
-          <div><dt>Clustering engine</dt><dd>{report.semanticAnalysis.clusteringVersion}</dd></div>
-          <div><dt>Similarity floor</dt><dd>{report.semanticAnalysis.similarityThreshold.toFixed(2)}</dd></div>
+          <div><dt>Recurring groups</dt><dd>{report.semanticAnalysis.clusterCount}</dd></div>
+          <div><dt>Feedback in groups</dt><dd>{report.semanticAnalysis.clusteredSegmentCount} / {report.semanticAnalysis.segmentCount}</dd></div>
+          <div><dt>Individual signals</dt><dd>{report.semanticAnalysis.outlierCount}</dd></div>
         </> : null}
       </dl>
 
@@ -379,7 +369,7 @@ export function AnalysisWorkspace(props: AnalysisWorkspaceProps) {
     <section className="analysis-workspace" aria-label="Analysis workspace">
       {props.status === 'configure' ? <ConfigureAnalysis {...props} /> : null}
       {props.status === 'processing' ? <ProcessingAnalysis stages={props.stages} llmProgress={props.llmProgress} activeRunId={props.activeRunId} activeRunStartedAt={props.activeRunStartedAt} /> : null}
-      {props.status === 'completed' ? <CompletedAnalysis report={props.report} onOpenReview={props.onOpenReview} /> : null}
+      {props.status === 'completed' ? <CompletedAnalysis report={props.report} onOpenReview={props.onOpenReview} onOpenOverview={props.onOpenOverview} /> : null}
       {props.status === 'failed' ? (
         <div className="analysis-workspace__failure" role="alert"><Icon icon={FileText} size={29} /><p className="analysis-workspace__label">Analysis stopped</p><h1>The evidence run could not be completed.</h1><p>{props.error || 'No source data was changed. Review the error and try this immutable run again.'}</p>{props.onRetry ? <button type="button" onClick={props.onRetry}>Try again <Icon icon={ArrowRight} size={15} /></button> : null}</div>
       ) : null}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CalendarDays, Menu } from 'lucide-react'
 import { Icon } from './Icon'
 import type { Project } from '../lib/api'
+import { DEMO_COMMENT_ALLOWANCE } from '../lib/csv'
 
 type TopbarProps = {
   projects: Project[]
@@ -17,6 +18,8 @@ type TopbarProps = {
   onLogout: () => void
   onMenu: () => void
   onExport: () => void
+  onHome: () => void
+  demoMode?: boolean
 }
 
 function formatDateRange({ from, to }: TopbarProps['dateRange']) {
@@ -26,7 +29,7 @@ function formatDateRange({ from, to }: TopbarProps['dateRange']) {
   return 'No review dates'
 }
 
-export function Topbar({ projects, projectId, title, dateRange, availableDateRange, userInitials, account, dateFilterBusy, onProjectChange, onDateRangeChange, onLogout, onMenu, onExport }: TopbarProps) {
+export function Topbar({ projects, projectId, title, dateRange, availableDateRange, userInitials, account, dateFilterBusy, onProjectChange, onDateRangeChange, onLogout, onMenu, onExport, onHome, demoMode = false }: TopbarProps) {
   const [dateOpen, setDateOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [draft, setDraft] = useState({ from: dateRange.from?.slice(0, 10) || '', to: dateRange.to?.slice(0, 10) || '' })
@@ -53,24 +56,25 @@ export function Topbar({ projects, projectId, title, dateRange, availableDateRan
       <button className="mobile-menu" aria-label="Open navigation" onClick={onMenu}>
         <Icon icon={Menu} size={20} />
       </button>
-      <select className="company-menu" aria-label="Switch project from top bar" value={projectId ?? ''} onChange={(event) => onProjectChange(event.target.value)}>
+      <a className="topbar-home" href="/" aria-label="Voice Lab home" onClick={(event) => { event.preventDefault(); onHome() }}>Voice Lab</a>
+      <select className="company-menu" aria-label="Switch project from top bar" value={projectId ?? ''} disabled={demoMode} onChange={(event) => onProjectChange(event.target.value)}>
         {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select>
       <span className="topbar-divider" />
       <span className="topbar-title">{title}</span>
       <div className="topbar-actions">
-        <div className="topbar-popover-anchor">
+        {!demoMode ? <div className="topbar-popover-anchor">
           <button className="date-button" aria-label={`Filter review period ${formatDateRange(dateRange)}`} aria-expanded={dateOpen} onClick={() => { setDateOpen((open) => !open); setAccountOpen(false) }}>{dateFilterBusy ? 'Analyzing range…' : formatDateRange(dateRange)} <Icon icon={CalendarDays} size={15} /></button>
-          {dateOpen ? <form className="topbar-popover date-filter-popover" aria-label="Date range filter" onSubmit={(event) => void applyDateRange(event)}>
+          {dateOpen ? <form className="topbar-popover date-filter-popover" aria-label="Date range filter" noValidate onSubmit={(event) => void applyDateRange(event)}>
             <p>Evidence window</p>
-            <label>From<input ref={fromInput} name="from" type="date" value={draft.from} min={availableDateRange.from?.slice(0, 10)} max={draft.to || availableDateRange.to?.slice(0, 10) || undefined} onInput={(event) => updateDraft('from', event.currentTarget.value)} onChange={(event) => updateDraft('from', event.target.value)} /></label>
-            <label>To<input ref={toInput} name="to" type="date" value={draft.to} min={draft.from || availableDateRange.from?.slice(0, 10) || undefined} max={availableDateRange.to?.slice(0, 10)} onInput={(event) => updateDraft('to', event.currentTarget.value)} onChange={(event) => updateDraft('to', event.target.value)} /></label>
+            <label>From<input ref={fromInput} name="from" type="date" value={draft.from} min={availableDateRange.from?.slice(0, 10)} max={availableDateRange.to?.slice(0, 10)} onInput={(event) => updateDraft('from', event.currentTarget.value)} onChange={(event) => updateDraft('from', event.target.value)} /></label>
+            <label>To<input ref={toInput} name="to" type="date" value={draft.to} min={availableDateRange.from?.slice(0, 10)} max={availableDateRange.to?.slice(0, 10)} onInput={(event) => updateDraft('to', event.currentTarget.value)} onChange={(event) => updateDraft('to', event.target.value)} /></label>
             {dateError ? <span role="alert">{dateError}</span> : null}
             <div><button type="button" onClick={() => setDraft({ from: '', to: '' })}>All dates</button><button type="submit" disabled={dateFilterBusy}>{dateFilterBusy ? 'Analyzing…' : 'Analyze range'}</button></div>
           </form> : null}
-        </div>
+        </div> : <span className="demo-mode-label">Temporary demo · {DEMO_COMMENT_ALLOWANCE} records max · expires in 24 hours</span>}
         <button className="export-button" onClick={onExport}>Export Voice Map</button>
-        <div className="topbar-popover-anchor account-anchor">
+        {!demoMode ? <div className="topbar-popover-anchor account-anchor">
           <button className="avatar top-avatar" aria-label="Account menu" aria-expanded={accountOpen} onClick={() => { setAccountOpen((open) => !open); setDateOpen(false) }}>{userInitials}</button>
           {accountOpen ? <section className="topbar-popover account-popover" aria-label="Account details">
             <strong>{account?.displayName || account?.email || 'Signed-in user'}</strong>
@@ -78,7 +82,7 @@ export function Topbar({ projects, projectId, title, dateRange, availableDateRan
             <small>{account?.role}</small>
             <button type="button" onClick={onLogout}>Log out</button>
           </section> : null}
-        </div>
+        </div> : null}
       </div>
     </header>
   )

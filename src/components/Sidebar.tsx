@@ -9,6 +9,7 @@ import {
   MessageSquareQuote,
   Rows3,
   ScanSearch,
+  ShieldCheck,
   Sparkles,
   Target,
 } from 'lucide-react'
@@ -16,6 +17,7 @@ import { Icon } from './Icon'
 import type { Project } from '../lib/api'
 
 const nav = [
+  [BarChart3, 'Overview'],
   [BookOpenText, 'Voice Map'],
   [FolderSearch2, 'Pain Phrases'],
   [Target, 'Outcomes'],
@@ -43,34 +45,37 @@ type SidebarProps = {
   onProjectChange: (projectId: string) => void
   onNewProject: () => void
   onLogout: () => void
+  demoMode?: boolean
+  demoCurationReady?: boolean
+  waitlistMonitoring?: boolean
 }
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '—'
 }
 
-export function Sidebar({ open, projects, projectId, activeLabel, dataset, account, onNavigate, onProjectChange, onNewProject, onLogout }: SidebarProps) {
+export function Sidebar({ open, projects, projectId, activeLabel, dataset, account, onNavigate, onProjectChange, onNewProject, onLogout, demoMode = false, demoCurationReady = true, waitlistMonitoring = false }: SidebarProps) {
   const confidence = dataset.confidence ? dataset.confidence.charAt(0).toUpperCase() + dataset.confidence.slice(1).toLowerCase() : null
   const accountLabel = account?.displayName || account?.email || 'Signed-in user'
   return (
     <aside className={`sidebar ${open ? 'is-open' : ''}`} aria-label="Project navigation">
-      <div className="brand">garaxe.<span>voice</span></div>
       <div className="project-switcher">
         <span>Project</span>
         <div>
-          <select aria-label="Switch project" value={projectId ?? ''} onChange={(event) => onProjectChange(event.target.value)}>
+          <select aria-label="Switch project" value={projectId ?? ''} disabled={demoMode} onChange={(event) => onProjectChange(event.target.value)}>
             {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>
-          <button type="button" aria-label="Create new project" onClick={onNewProject}>+</button>
+          {!demoMode ? <button type="button" aria-label="Create new project" onClick={onNewProject}>+</button> : null}
         </div>
       </div>
       <nav className="side-nav">
-        {nav.map(([icon, label]) => (
-          <button className={activeLabel === label ? 'active' : ''} key={label} disabled={unavailable.has(label)} aria-disabled={unavailable.has(label)} title={unavailable.has(label) ? 'Coming in the next delivery phase' : undefined} onClick={() => onNavigate(label)}>
+        {[...nav, ...(waitlistMonitoring ? [[ShieldCheck, 'Waitlist'] as const] : [])].map(([icon, label]) => {
+          const disabled = unavailable.has(label) || (demoMode && (!['Overview', 'Voice Map', 'Analysis', 'Curation'].includes(label) || (label === 'Curation' && !demoCurationReady)))
+          return <button className={activeLabel === label ? 'active' : ''} key={label} disabled={disabled} aria-disabled={disabled} onClick={() => onNavigate(label)}>
             <Icon icon={icon} />
             <span>{label}</span>
           </button>
-        ))}
+        })}
       </nav>
       <div className="dataset-card">
         <span>Reviews analyzed</span>
@@ -80,9 +85,11 @@ export function Sidebar({ open, projects, projectId, activeLabel, dataset, accou
         <div>{confidence || 'Not analyzed'} {confidence ? <i aria-hidden="true" /> : null}</div>
       </div>
       <div className="profile">
+        {demoMode ? <><span className="avatar">D</span><span><strong>Demo mode</strong><small>Expires after 24 hours</small></span><button type="button" className="logout-button" onClick={onLogout}>Exit demo</button></> : <>
         <span className="avatar">{initials(accountLabel)}</span>
         <span><strong>{accountLabel}</strong><small>{account?.email}{account?.role ? ` · ${account.role}` : ''}</small></span>
         <button type="button" className="logout-button" onClick={onLogout}>Log out</button>
+        </>}
       </div>
     </aside>
   )

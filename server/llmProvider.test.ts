@@ -30,8 +30,10 @@ describe('OpenCode Go provider adapter', () => {
     expect(parseRetryAfter('Thu, 01 Jan 2026 00:00:04 GMT', Date.parse('2026-01-01T00:00:00Z'))).toBe(4_000)
   })
 
-  it('stays disabled when the API key is absent', () => {
+  it('uses only OPENCODE_GO_API_KEY and stays disabled for other key names', () => {
     expect(openCodeGoProviderFromEnv({})).toBeNull()
+    expect(openCodeGoProviderFromEnv({ OPENCODE_GO_API_KEY: 'test-only' })).toBeInstanceOf(OpenCodeGoProvider)
+    expect(openCodeGoProviderFromEnv({ OPENCODE_KEY: 'other-test-only' })).toBeNull()
     expect(() => new OpenCodeGoProvider({ apiKey: ' ' })).toThrow('API key is required')
     expect(new LlmProviderError('INVALID_RESPONSE', 'safe')).toBeInstanceOf(Error)
   })

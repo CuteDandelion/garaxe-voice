@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { schemaSql } from './schema'
+import type { Database, DatabaseClient } from './database'
 import {
   AuthError,
   authSchemaSql,
   authenticateRequest,
+  authenticateVerifiedToken,
   authenticateToken,
   authorizeAnalysisRun,
   authorizeProject,
@@ -14,10 +16,12 @@ import {
   bindProjectToOrganization,
   createIdentity,
   createSession,
+  createSupabaseClaimsVerifier,
   hashSessionToken,
   parseBearerToken,
   requireOrganizationMembership,
   revokeSession,
+  supabaseAuthConfiguration,
 } from './auth'
 
 let database: PGlite
@@ -105,6 +109,140 @@ describe('opaque sessions', () => {
       code: 'AUTHENTICATION_REQUIRED', status: 401, message: 'A valid session is required.',
     })
     await expect(authenticateToken(database, 'nonexistent-token')).rejects.not.toThrow(session.token)
+  })
+})
+
+describe('Supabase bearer sessions', () => {
+  it('requires a complete HTTPS URL and publishable-key server contract', () => {
+    expect(supabaseAuthConfiguration({})).toBeNull()
+    expect(supabaseAuthConfiguration({
+      SUPABASE_URL: 'https://voice-lab-test.supabase.co',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+    })).toEqual({
+      url: 'https://voice-lab-test.supabase.co',
+      publishableKey: 'sb_publishable_test',
+    })
+    expect(supabaseAuthConfiguration({
+      SUPABASE_URL: 'http://127.0.0.1:54321',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_local',
+    })).toEqual({ url: 'http://127.0.0.1:54321', publishableKey: 'sb_publishable_local' })
+    expect(() => supabaseAuthConfiguration({ SUPABASE_URL: 'https://voice-lab-test.supabase.co' })).toThrow(
+      'SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be configured together.',
+    )
+    expect(() => supabaseAuthConfiguration({
+      SUPABASE_URL: 'http://voice-lab-test.supabase.co',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+    })).toThrow('SUPABASE_URL must use HTTPS or loopback HTTP.')
+  })
+
+  it('maps verified claims to the existing profile and memberships without creating grants', async () => {
+    const identity = await createIdentity(database, {
+      email: 'member@example.com', displayName: 'Member', organizationName: 'Member Org', role: 'analyst',
+    })
+
+    await expect(authenticateVerifiedToken(database, 'header.payload.signature', async () => ({
+      sub: identity.userId,
+      sessionId: 'supabase-session-1',
+      email: ' MEMBER@example.com ',
+    }))).resolves.toMatchObject({
+      sessionId: 'supabase-session-1',
+      user: { id: identity.userId, email: 'member@example.com', displayName: 'Member' },
+      memberships: [{ organizationId: identity.organizationId, role: 'analyst' }],
+    })
+
+    const memberships = await database.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM organization_memberships WHERE user_id = $1', [identity.userId],
+    )
+    expect(memberships.rows[0]?.count).toBe('1')
+  })
+
+  it('fails closed for invalid claims', async () => {
+    await expect(authenticateVerifiedToken(database, 'invalid.jwt.value', async () => {
+      throw new Error('provider detail must stay private')
+    })).rejects.toMatchObject({ code: 'AUTHENTICATION_REQUIRED', status: 401, message: 'A valid session is required.' })
+  })
+
+  it('provisions one personal workspace on first verified login and reuses it', async () => {
+    const userId = randomUUID()
+    const verifyClaims = async () => ({
+      sub: userId,
+      sessionId: 'first-login-session',
+      email: ' New.Owner@example.com ',
+    })
+
+    const first = await authenticateVerifiedToken(database, 'header.payload.signature', verifyClaims)
+    const second = await authenticateVerifiedToken(database, 'header.payload.signature', verifyClaims)
+
+    expect(first).toMatchObject({
+      user: { id: userId, email: 'new.owner@example.com' },
+      memberships: [{ organizationName: 'Personal workspace', role: 'owner' }],
+    })
+    expect(second.memberships).toEqual(first.memberships)
+    const counts = await database.query<{ users: number; organizations: number; memberships: number; projects: number; bindings: number; projectName: string }>(
+      `SELECT
+        (SELECT COUNT(*)::int FROM auth_users WHERE id = $1) AS users,
+        (SELECT COUNT(*)::int FROM organizations) AS organizations,
+        (SELECT COUNT(*)::int FROM organization_memberships WHERE user_id = $1) AS memberships,
+        (SELECT COUNT(*)::int FROM projects) AS projects,
+        (SELECT COUNT(*)::int FROM project_organizations) AS bindings,
+        (SELECT name FROM projects LIMIT 1) AS "projectName"`,
+      [userId],
+    )
+    expect(counts.rows[0]).toEqual({ users: 1, organizations: 1, memberships: 1, projects: 1, bindings: 1, projectName: 'Default project' })
+    await expect(authenticateRequest(database, { headers: {} }, verifyClaims)).rejects.toMatchObject({
+      code: 'AUTHENTICATION_REQUIRED', status: 401,
+    })
+  })
+
+  it('accepts a JWT-shaped bearer token without weakening malformed authorization rejection', () => {
+    expect(parseBearerToken({ headers: { authorization: 'Bearer header.payload.signature' } })).toBe('header.payload.signature')
+    expect(() => parseBearerToken({ headers: { authorization: 'Bearer header payload signature' } })).toThrowError(AuthError)
+  })
+
+  it('authenticates a bearer request through verified Supabase claims when configured', async () => {
+    const identity = await createIdentity(database, {
+      email: 'verified@example.com', displayName: 'Verified', organizationName: 'Verified Org',
+    })
+    const verifyClaims = createSupabaseClaimsVerifier(async (token) => ({
+      data: { claims: { sub: identity.userId, session_id: 'verified-session', email: 'verified@example.com' } },
+      error: token === 'header.payload.signature' ? null : new Error('invalid'),
+    }))
+
+    await expect(authenticateRequest(database, {
+      headers: { authorization: 'Bearer header.payload.signature' },
+    }, verifyClaims)).resolves.toMatchObject({
+      sessionId: 'verified-session', user: { id: identity.userId },
+    })
+  })
+
+  it('sets the verified subject as transaction-local database identity before profile lookup', async () => {
+    const userId = randomUUID()
+    const clientFor = () => {
+      let scopedUser: string | null = null
+      const client: DatabaseClient = {
+        exec: async () => undefined,
+        query: async <Row>(sql: string, parameters: unknown[] = []) => {
+          if (sql.includes("set_config('app.current_user_id'")) {
+            scopedUser = String(parameters[0])
+            return { rows: [] as Row[] }
+          }
+          if (sql.includes('FROM auth_users')) return { rows: scopedUser === userId
+            ? [{ userId, email: 'scoped@example.com', displayName: 'Scoped' } as Row]
+            : [] }
+          if (sql.includes('FROM organization_memberships')) return { rows: [] as Row[] }
+          throw new Error(`Unexpected SQL: ${sql}`)
+        },
+      }
+      return client
+    }
+    const guardedDatabase: Database = {
+      ...clientFor(),
+      transaction: async <Result>(work: (client: DatabaseClient) => Promise<Result>) => work(clientFor()),
+    }
+
+    await expect(authenticateVerifiedToken(guardedDatabase, 'header.payload.signature', async () => ({
+      sub: userId, sessionId: 'scoped-session', email: 'scoped@example.com',
+    }))).resolves.toMatchObject({ user: { id: userId }, memberships: [] })
   })
 })
 

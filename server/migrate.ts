@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import pg from 'pg'
-import { baseSchemaStatements } from './db'
 import { postgresSslConfig } from './postgresSsl'
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required to apply managed PostgreSQL migrations.')
@@ -11,7 +10,6 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: post
 const client = await pool.connect()
 try {
   await client.query('SELECT pg_advisory_lock($1)', [728341901])
-  for (const statement of baseSchemaStatements) await client.query(statement)
   await client.query(`CREATE TABLE IF NOT EXISTS public.garaxe_schema_migrations (
     name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`)

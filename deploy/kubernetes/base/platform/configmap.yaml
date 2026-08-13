@@ -6,14 +6,22 @@ data:
   NODE_ENV: production
   API_HOST: 0.0.0.0
   API_PORT: "3001"
-  GARAXE_ALLOWED_ORIGIN: https://voice.misakirose.com
+  GARAXE_ALLOWED_ORIGIN: https://voicelab.elseform.tech
   GARAXE_MAX_BODY_BYTES: "5242880"
-  GARAXE_DATABASE_SSL_MODE: disable
+  GARAXE_TRUST_PROXY: "true"
+  GARAXE_DEMO_CLIENT_STARTS_PER_HOUR: "3"
+  GARAXE_DEMO_GLOBAL_ACTIVE_RUNS: "2"
+  GARAXE_DEMO_CLIENT_ACTIVE_RUNS: "1"
+  GARAXE_ORGANIZATION_ACTIVE_JOB_LIMIT: "3"
+  GARAXE_ALLOW_LOCAL_HTTP_SOURCE_URLS: "false"
+  GARAXE_DATABASE_SSL_MODE: verify-full
+  GARAXE_DATABASE_CA_FILE: /etc/voice-lab/database/prod-ca-2021.crt
+  GARAXE_DEMO_DB_DIR: /tmp/voice-lab-demo-pgdata
+  SUPABASE_URL: https://ugkubygaitrlwszygbno.supabase.co
   GARAXE_MODEL_CACHE_DIR: /opt/garaxe/models
   GARAXE_ALLOW_REMOTE_MODELS: "false"
-  GARAXE_DEPLOYMENT_TIER: staging
-  GARAXE_STAGING_AUTH_ENABLED: "true"
-  GARAXE_STAGING_OWNER_EMAIL: test-user@example.com
+  GARAXE_DEPLOYMENT_TIER: production
+  GARAXE_STAGING_AUTH_ENABLED: "false"
   OPENCODE_GO_BASE_URL: https://opencode.ai/zen/go/v1
   OPENCODE_GO_DEFAULT_MODEL: qwen3.7-plus
   OPENCODE_GO_TIMEOUT_MS: "180000"

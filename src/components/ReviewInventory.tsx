@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { Icon } from './Icon'
+import { safeSourceUrl } from '../lib/sourceUrl'
 import './ReviewInventory.css'
 
 export type ReviewInventoryFilters = {
@@ -128,6 +129,7 @@ export function ReviewInventory({
   onCloseReview,
   onRetry,
 }: ReviewInventoryProps) {
+  const selectedSourceUrl = safeSourceUrl(selectedReview?.sourceUrl, import.meta.env.DEV)
   const searchId = useId()
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -230,7 +232,7 @@ export function ReviewInventory({
               {selectedReview.reviewerName ? <p className="review-inventory__reviewer">— {selectedReview.reviewerName}</p> : null}
               {selectedReview.isExcluded ? <div className="review-inventory__notice"><strong>Excluded from analysis</strong><span>{selectedReview.exclusionReason || 'No exclusion reason was recorded.'}</span></div> : null}
               <section className="review-inventory__provenance" aria-labelledby="review-provenance-title"><p className="review-inventory__eyebrow" id="review-provenance-title">Provenance</p><dl><div><dt>Review ID</dt><dd>{selectedReview.id}</dd></div>{selectedReview.externalId ? <div><dt>Provider record</dt><dd>{selectedReview.externalId}</dd></div> : null}<div><dt>Source row</dt><dd>{selectedReview.sourceRecordId}</dd></div><div><dt>Import job</dt><dd>{selectedReview.importJobId}</dd></div>{selectedReview.importedAt ? <div><dt>Imported</dt><dd>{formatDate(selectedReview.importedAt)}</dd></div> : null}</dl></section>
-              {selectedReview.sourceUrl ? <a className="review-inventory__source-link" href={selectedReview.sourceUrl} target="_blank" rel="noreferrer">Open authorized source <Icon icon={ArrowRight} size={14} /></a> : null}
+              {selectedSourceUrl ? <a className="review-inventory__source-link" href={selectedSourceUrl} target="_blank" rel="noreferrer">Open authorized source <Icon icon={ArrowRight} size={14} /></a> : null}
               {selectedReview.metadata && Object.keys(selectedReview.metadata).length > 0 ? <details className="review-inventory__metadata"><summary>Preserved source metadata</summary><pre>{JSON.stringify(selectedReview.metadata, null, 2)}</pre></details> : null}
             </div>
           </aside>

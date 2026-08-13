@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render an immutable Garaxe evidence-first report snapshot to PDF."""
+"""Render an immutable Voice Lab evidence-first report snapshot to PDF."""
 
 import json
 import sys
@@ -38,7 +38,7 @@ def first(snapshot, *keys, fallback=None):
 class ReportDoc(BaseDocTemplate):
     def __init__(self, filename, metadata):
         super().__init__(filename, pagesize=A4, leftMargin=19 * mm, rightMargin=19 * mm, topMargin=22 * mm, bottomMargin=19 * mm,
-                         title=metadata.get("title", "Garaxe Voice Intelligence"), author="Garaxe Voice Intelligence")
+                         title=metadata.get("title", "Voice Lab"), author="Voice Lab")
         self.metadata = metadata
         frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height, id="body")
         self.addPageTemplates(PageTemplate(id="garaxe", frames=[frame], onPage=self.decorate))
@@ -55,10 +55,10 @@ class ReportDoc(BaseDocTemplate):
         canvas.line(19 * mm, A4[1] - 15 * mm, A4[0] - 19 * mm, A4[1] - 15 * mm)
         canvas.setFont("Helvetica-Bold", 8)
         canvas.setFillColor(INK)
-        canvas.drawString(19 * mm, A4[1] - 11 * mm, "garaxe.voice")
+        canvas.drawString(19 * mm, A4[1] - 11 * mm, "Voice Lab")
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(MUTED)
-        canvas.drawRightString(A4[0] - 19 * mm, A4[1] - 11 * mm, f"VOICE INTELLIGENCE  /  {self.metadata.get('version', 'V2')}")
+        canvas.drawRightString(A4[0] - 19 * mm, A4[1] - 11 * mm, "DEMO REPORT  /  TEMPORARY INPUT" if self.metadata.get("demo") else f"VOICE MAP  /  {self.metadata.get('version', 'V2')}")
         canvas.line(19 * mm, 13 * mm, A4[0] - 19 * mm, 13 * mm)
         canvas.drawString(19 * mm, 8.5 * mm, str(self.metadata.get("generatedAt", "Generated report"))[:32])
         canvas.drawRightString(A4[0] - 19 * mm, 8.5 * mm, str(doc.page))
@@ -152,7 +152,7 @@ def build_story(snapshot):
     narrative = snapshot.get("narrative") or {}
     themes = snapshot.get("themes") or []
     charts = snapshot.get("charts") or {}
-    story = [Spacer(1, 8 * mm), Paragraph("EXECUTIVE VOICE BRIEF / IMMUTABLE SNAPSHOT", s["eyebrow"]),
+    story = [Spacer(1, 8 * mm), Paragraph("DEMO REPORT / SERVER DATA EXPIRES IN 24 HOURS" if snapshot.get("demo") else "EXECUTIVE VOICE BRIEF / IMMUTABLE SNAPSHOT", s["eyebrow"]),
              Paragraph(text(narrative.get("headline"), "What customers are telling you."), s["title"]),
              Paragraph(text(narrative.get("executiveSummary"), "No executive interpretation was available."), s["lead"]), metric_table(snapshot, themes)]
     provenance = narrative.get("provenance") or {}
@@ -184,8 +184,11 @@ def build_story(snapshot):
                   Paragraph("Human-reviewed conclusions with the complete source feedback kept one interaction away.", s["body"])])
     for index, theme in enumerate(themes, 1):
         evidence = theme.get("evidence") or []
-        header = [Paragraph(f"{index:02d} / {text(theme.get('type'), 'theme').upper()} / {text(theme.get('confidence'), 'confidence')}", s["eyebrow"]),
-                  Paragraph(text(theme.get("name"), "Unnamed theme"), s["h2"]), Paragraph(text(theme.get("summary"), "No interpretation supplied."), s["body"])]
+        signal_type = text(theme.get("primarySignalType") or theme.get("type"), "other")
+        header = [Paragraph(f"{index:02d} / {signal_type.upper()} / {text(theme.get('confidence'), 'confidence')}", s["eyebrow"]),
+                  Paragraph(text(theme.get("name"), "Unnamed theme"), s["h2"]),
+                  Paragraph(text(theme.get("topic"), theme.get("name") or "Other feedback"), s["meta"]),
+                  Paragraph(text(theme.get("summary"), "No interpretation supplied."), s["body"])]
         if evidence:
             representative = next((item for item in evidence if item.get("pinned")), evidence[0])
             header.extend([Paragraph(f'“{text(representative.get("quote"), "Evidence unavailable")}”', s["quote"]),
@@ -215,9 +218,10 @@ def build_story(snapshot):
             ]), Spacer(1, 4 * mm)])
 
     quality = first(snapshot, "dataset", "qualityReport", fallback={}) or {}
+    methodology = "This demo report uses feedback submitted to an isolated demo project. The server deletes its source and derived data 24 hours after session creation. This PDF is generated on demand, is not written to report history, and remains under your control after download. It is not an immutable workspace report." if snapshot.get("demo") else "This is an immutable snapshot of one completed analysis run and one ready curation revision. Charts are deterministic aggregations of frozen evidence. The executive brief is generated from approved themes and may not cite evidence outside the theme IDs recorded with each action."
     story.extend([PageBreak(), Spacer(1, 6 * mm), Paragraph("METHODOLOGY & PROVENANCE", s["eyebrow"]),
                   Paragraph("How to read this report", s["h2"]),
-                  Paragraph("This is an immutable snapshot of one completed analysis run and one ready curation revision. Charts are deterministic aggregations of frozen evidence. The executive brief is generated from approved themes and may not cite evidence outside the theme IDs recorded with each action.", s["body"]),
+                  Paragraph(methodology, s["body"]),
                   Paragraph(f"Pipeline: {text(first(snapshot, 'versions', 'pipeline'))}<br/>Synthesis: {text(first(snapshot, 'versions', 'synthesis'))}<br/>Report contract: {text(snapshot.get('schemaVersion'))}<br/>Included reviews: {text(quality.get('included'), '0')}<br/>Excluded reviews: {text(quality.get('excluded'), '0')}", s["small"])])
     return story
 
@@ -228,7 +232,7 @@ def main():
     snapshot = json.load(sys.stdin)
     output = Path(sys.argv[1]).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    metadata = {"generatedAt": snapshot.get("generatedAt"), "version": snapshot.get("schemaVersion"), "title": first(snapshot, "narrative", "headline", fallback="Garaxe Voice Intelligence")}
+    metadata = {"generatedAt": snapshot.get("generatedAt"), "version": snapshot.get("schemaVersion"), "title": first(snapshot, "narrative", "headline", fallback="Voice Lab"), "demo": bool(snapshot.get("demo"))}
     ReportDoc(str(output), metadata).build(build_story(snapshot))
     print(str(output))
 

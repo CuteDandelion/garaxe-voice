@@ -75,6 +75,7 @@
 .analysis-workspace__run-stamp span { font-weight: 700; text-transform: uppercase; }
 .analysis-workspace__run-stamp strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-workspace__run-stamp small { color: var(--muted, #66635d); }
+.analysis-workspace__overview-button { align-items: center; background: var(--ink, #0a0a0a); border: 1px solid var(--ink, #0a0a0a); color: var(--paper, #f8f5ed); cursor: pointer; display: inline-flex; font: 650 10px "Space Grotesk", sans-serif; gap: 8px; min-height: 42px; padding: 0 16px; }
 .analysis-workspace__metrics { border-bottom: 1px solid var(--ink, #0a0a0a); display: grid; grid-template-columns: repeat(6, 1fr); margin: 0; }
 .analysis-workspace__metrics div { border-right: 1px solid rgba(10,10,10,.22); display: flex; flex-direction: column-reverse; gap: 6px; padding: 20px 16px; }
 .analysis-workspace__metrics div:first-child { padding-left: 0; }

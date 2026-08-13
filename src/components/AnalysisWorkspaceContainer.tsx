@@ -16,16 +16,16 @@ const initialConfig: AnalysisConfig = {
 
 const processingStages: AnalysisStage[] = [
   { key: 'assembling_dataset', label: 'Assembling the immutable dataset', state: 'pending' },
-  { key: 'preprocessing', label: 'Normalizing and validating source language', state: 'pending' },
+  { key: 'preprocessing', label: 'Preparing the source language', state: 'pending' },
   { key: 'extracting_signals', label: 'Finding exact customer-language evidence', state: 'pending' },
-  { key: 'forming_themes', label: 'Forming semantic evidence clusters', state: 'pending' },
-  { key: 'interpreting_clusters', label: 'Interpreting every cluster with the default LLM', state: 'pending' },
+  { key: 'forming_themes', label: 'Finding related feedback', state: 'pending' },
+  { key: 'interpreting_clusters', label: 'Writing evidence-backed topics', state: 'pending' },
   { key: 'completed', label: 'Preparing the evidence-backed Voice Map', state: 'pending' },
 ]
 
-type Props = { projectId: string | null; onOpenReview: (reviewId: string) => void }
+type Props = { projectId: string | null; onOpenReview: (reviewId: string) => void; onOpenOverview: () => void }
 
-export function AnalysisWorkspaceContainer({ projectId, onOpenReview }: Props) {
+export function AnalysisWorkspaceContainer({ projectId, onOpenReview, onOpenOverview }: Props) {
   const [config, setConfig] = useState(initialConfig)
   const [status, setStatus] = useState<'configure' | 'processing' | 'completed' | 'failed'>('configure')
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof getReviewSummary>> | null>(null)
@@ -140,6 +140,6 @@ export function AnalysisWorkspaceContainer({ projectId, onOpenReview }: Props) {
     previewLoading={!summary && !error} canRun={Boolean(projectId && summary?.total)} stages={stages}
     llmProgress={llmProgress} activeRunId={activeRunId} activeRunStartedAt={activeRunStartedAt}
     report={report} error={error}
-    onRun={() => void run()} onRetry={() => { setStatus('configure'); setError(null) }} onOpenReview={onOpenReview}
+    onRun={() => void run()} onRetry={() => { setStatus('configure'); setError(null) }} onOpenReview={onOpenReview} onOpenOverview={onOpenOverview}
   />
 }

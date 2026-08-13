@@ -1,6 +1,6 @@
 import type { ExtractedSignal, SignalType } from './signalExtraction'
 
-export const THEME_ENGINE_VERSION = 'deterministic-theme-engine-v1'
+export const THEME_ENGINE_VERSION = 'deterministic-theme-engine-v2'
 
 export type ConfidenceLabel = 'High' | 'Moderate' | 'Emerging' | 'Weak' | 'Insufficient'
 
@@ -254,14 +254,15 @@ export function formThemes(
     if (signal.attributes.clusterStatus === 'unclustered') continue
     const aspect = normalizeKey(signal.normalizedAspect)
     if (!aspect || !reviewIndex.has(signal.reviewId)) continue
-    const key = `${signal.signalType}\u0000${aspect}`
+    const cluster = Number.isInteger(signal.attributes.cluster) ? String(signal.attributes.cluster) : ''
+    const key = `${signal.signalType}\u0000${aspect}\u0000${cluster}`
     const group = groups.get(key) ?? []
     group.push(signal)
     groups.set(key, group)
   }
 
   const themes = [...groups.entries()].map(([key, groupedSignals]) => {
-    const [signalTypeValue, normalizedAspect] = key.split('\u0000') as [SignalType, string]
+    const [signalTypeValue, normalizedAspect, cluster] = key.split('\u0000') as [SignalType, string, string]
     const independentSignals = uniqueIndependentSignals(groupedSignals, reviewIndex)
     const opposing = oppositeTypes(signalTypeValue)
     const contradictionSignals = uniqueIndependentSignals(signals.filter((signal) =>
@@ -304,7 +305,7 @@ export function formThemes(
     )
     const label = confidenceLabel(score, evidence, minimum)
     return {
-      id: `theme:${signalTypeValue}:${stableHash(normalizedAspect)}`,
+      id: `theme:${signalTypeValue}:${stableHash(cluster ? `${normalizedAspect}\u0000${cluster}` : normalizedAspect)}`,
       rank: 0,
       signalType: signalTypeValue,
       normalizedAspect,

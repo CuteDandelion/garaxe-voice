@@ -219,7 +219,6 @@ export function preprocessReviews(reviews: PreprocessingReview[], config: Prepro
       canonical.push(current)
       continue
     }
-    current.output.reason = 'duplicate'
     current.output.duplicateOfReviewId = match.output.reviewId
     groups.set(match.output.reviewId, [...(groups.get(match.output.reviewId) ?? []), current.output.reviewId])
   }

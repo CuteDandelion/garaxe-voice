@@ -5,8 +5,8 @@ import { adaptArtifact, applyCuratedProjection } from './VoiceMapWorkspaceContai
 import { SignalWorkspace, type SignalKind } from './SignalWorkspace'
 
 const types: Record<SignalKind, VoiceMapSignalType[]> = {
-  pain: ['pain', 'operational_issue'],
-  outcome: ['desired_outcome', 'praise', 'purchase_trigger'],
+  pain: ['pain'],
+  outcome: ['desired_outcome'],
   objection: ['objection'],
   emotion: ['emotion'],
 }

@@ -35,7 +35,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: garaxe-secrets
+                  name: garaxe-voice-lab-migration-secrets
                   key: database-url
           resources:
             requests:
@@ -49,3 +49,11 @@ spec:
             capabilities:
               drop: ["ALL"]
             readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/voice-lab/database
+              readOnly: true
+      volumes:
+        - name: database-ca
+          configMap:
+            name: garaxe-database-ca

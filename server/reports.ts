@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from './database'
 import { getCurationProjection, type CuratedEvidence, type EffectiveTheme } from './curation'
 import { generateReportNarrative } from './reportNarrative'
+import { themeTypeSignalType } from './canonicalOutcome'
 
 const REPORT_SCHEMA_VERSION = 'report-snapshot-v2'
 
@@ -85,16 +86,28 @@ function snapshotEvidence(evidence: CuratedEvidence[], details: Map<string, Evid
 }
 
 function snapshotTheme(theme: EffectiveTheme, details: Map<string, EvidenceDetail>) {
+  const primaryCategory = theme.categories[0]
+    || (theme.type === 'objection' ? 'objection'
+      : theme.type === 'emotion' || theme.type === 'emotional_trigger' ? 'emotion'
+        : theme.type === 'desired_outcome' || theme.type === 'praise' || theme.type === 'purchase_driver' || theme.type === 'feature_request' ? 'desired_outcome'
+          : 'pain')
   return {
     id: theme.id,
     machineThemeId: theme.machineThemeId,
     originThemeIds: [...theme.originThemeIds],
     rank: theme.rank,
     name: theme.name,
+    topic: theme.topic,
+    primaryCategory,
+    primarySignalType: theme.primarySignalType || themeTypeSignalType(theme.type),
+    signalTaxonomyVersion: theme.signalTaxonomyVersion || 'legacy-unversioned',
+    proposedTypeLabel: theme.proposedTypeLabel || null,
     summary: theme.summary,
     type: theme.type,
     sentiment: theme.sentiment,
     confidence: theme.confidence,
+    origin: theme.origin,
+    provenance: structuredClone(theme.provenance),
     evidence: snapshotEvidence(theme.evidence, details),
   }
 }

@@ -58,6 +58,20 @@ describe('semantic analysis pipeline', () => {
     expect(result.diagnostics[0]).toMatchObject({ size: 2, independentReviewCount: 2, needsAdjudication: false })
   })
 
+  it('does not let sentiment split semantically identical feedback before category interpretation', async () => {
+    const reviews = [
+      { reviewId: 'export-1', text: 'Export stalled before delivery.', rating: 1 },
+      { reviewId: 'export-2', text: 'I want export delivery to finish.', rating: 5 },
+    ]
+    const result = await analyzeSemantically(reviews, {
+      id: 'same-topic', version: 'same-topic-v1', dimensions: 2, embed: async () => [[1, 0], [1, 0]],
+    }, {
+      id: 'mixed-sentiment', version: 'mixed-sentiment-v1',
+      classify: async () => [{ sentiment: 'negative', confidence: .9 }, { sentiment: 'positive', confidence: .9 }],
+    })
+    expect(result.signals.map((signal) => signal.attributes.cluster)).toEqual([0, 0])
+  })
+
   it('routes accepted but lower-cohesion clusters to LLM grouping adjudication', () => {
     const angle = Math.acos(.86)
     const result = clusterEmbeddingsByMutualKnn(

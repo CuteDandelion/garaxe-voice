@@ -355,6 +355,8 @@ export function VoiceMapWorkspaceContainer({ projectId, section = 'voice-map', i
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const loadVersion = useRef(0)
+  const onRunSummaryRef = useRef(onRunSummary)
+  onRunSummaryRef.current = onRunSummary
 
   const load = useCallback(async () => {
     if (!projectId) return
@@ -364,8 +366,9 @@ export function VoiceMapWorkspaceContainer({ projectId, section = 'voice-map', i
       const runs = await listAnalysisRuns(projectId)
       if (version !== loadVersion.current) return
       const latest = runs.find((candidate) => candidate.status === 'completed')
-      if (!latest) { onRunSummary?.({ confidence: null, createdAt: null }); setStatus('empty'); return }
-      const [artifact, curation, runCoverage, brief] = await Promise.all([getVoiceMapArtifact(latest.id), getCurationProjection(latest.id), getAnalysisCoverage(latest.id), section === 'overview' ? getOverviewBrief(latest.id) : Promise.resolve(null)])
+      if (!latest) { onRunSummaryRef.current?.({ confidence: null, createdAt: null }); setStatus('empty'); return }
+      setOverviewBrief(null)
+      const [artifact, curation, runCoverage] = await Promise.all([getVoiceMapArtifact(latest.id), getCurationProjection(latest.id), getAnalysisCoverage(latest.id)])
       if (version !== loadVersion.current) return
       const adapted = adaptArtifact(artifact)
       const recurringThemeIds = new Set((runCoverage || []).filter((item) => item.disposition === 'recurring').flatMap((item) => item.themeIds))
@@ -383,13 +386,16 @@ export function VoiceMapWorkspaceContainer({ projectId, section = 'voice-map', i
         conclusion: !hasConfirmedSignal && categorizedReviews > 0 ? { title: 'Actionable signals are emerging from retained feedback.', narrative: `${categorizedReviews} comments have grounded category homes below. Recurrence and executive conclusions remain unconfirmed.` } : curatedVoiceMap.conclusion,
         signals: categorizedSignals,
         phrases: [...curatedVoiceMap.phrases.filter((phrase) => !curatedIds.has(phrase.themeId)), ...confirmedThemes.filter((theme) => curatedIds.has(theme.id)).map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'curated' as const })), ...emergingBubbles(emergingThemes)],
-      }); setThemes(visibleThemes); setCoverage(runCoverage || []); setOverviewBrief(brief)
-      onRunSummary?.({ confidence: confidence(artifact.run.qualityReport?.confidence || 'Insufficient'), createdAt: artifact.run.createdAt, dateFrom: artifact.run.configuration.dateFrom, dateTo: artifact.run.configuration.dateTo }); setStatus('ready')
+      }); setThemes(visibleThemes); setCoverage(runCoverage || [])
+      onRunSummaryRef.current?.({ confidence: confidence(artifact.run.qualityReport?.confidence || 'Insufficient'), createdAt: artifact.run.createdAt, dateFrom: artifact.run.configuration.dateFrom, dateTo: artifact.run.configuration.dateTo }); setStatus('ready')
+      if (section === 'overview') void getOverviewBrief(latest.id).then((brief) => {
+        if (version === loadVersion.current) setOverviewBrief(brief)
+      }).catch(() => undefined)
     } catch (reason) {
       if (version !== loadVersion.current) return
       setError(reason instanceof Error ? reason.message : 'Voice Map unavailable.'); setStatus('error')
     }
-  }, [onRunSummary, projectId, refreshKey, section])
+  }, [projectId, refreshKey, section])
 
   useEffect(() => { void load(); return () => { loadVersion.current += 1 } }, [load])
   useEffect(() => { if (section === 'voice-map') setMode(initialMode) }, [initialMode, section])

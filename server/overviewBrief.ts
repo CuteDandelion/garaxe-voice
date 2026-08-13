@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { EffectiveTheme } from './curation'
 import { openCodeGoProviderFromEnv, type OpenCodeGoProvider } from './llmProvider'
 
@@ -86,6 +87,18 @@ const evidenceOnly = (): OverviewBriefResult => ({
   message: 'The intelligence brief is unavailable. Evidence context remains available.',
 })
 
+const configuredBriefs = new Map<string, Promise<OverviewBriefResult>>()
+const injectedBriefs = new WeakMap<OpenCodeGoProvider, Map<string, Promise<OverviewBriefResult>>>()
+
+function briefCache(provider: OpenCodeGoProvider, configured: boolean) {
+  if (configured) return configuredBriefs
+  const existing = injectedBriefs.get(provider)
+  if (existing) return existing
+  const created = new Map<string, Promise<OverviewBriefResult>>()
+  injectedBriefs.set(provider, created)
+  return created
+}
+
 export async function generateOverviewBrief(
   themes: EffectiveTheme[],
   options: { provider?: OpenCodeGoProvider | null; environment?: NodeJS.ProcessEnv } = {},
@@ -95,13 +108,17 @@ export async function generateOverviewBrief(
   const environment = options.environment || process.env
   const provider = options.provider === undefined ? openCodeGoProviderFromEnv(environment) : options.provider
   if (!provider || environment.GARAXE_OVERVIEW_LLM_ENABLED === 'false') return evidenceOnly()
-  try {
-    const completion = await provider.complete({
-      model: environment.GARAXE_OVERVIEW_LLM_MODEL || environment.OPENCODE_GO_DEFAULT_MODEL || 'qwen3.7-plus',
-      messages: messages(usable), maxTokens: 1_800, temperature: 0, json: true, enableThinking: false,
-    })
-    return { status: 'ready', schemaVersion: OVERVIEW_BRIEF_SCHEMA_VERSION, brief: parseBrief(completion.content, usable) }
-  } catch {
-    return evidenceOnly()
-  }
+  const model = environment.GARAXE_OVERVIEW_LLM_MODEL || environment.OPENCODE_GO_DEFAULT_MODEL || 'qwen3.7-plus'
+  const requestMessages = messages(usable)
+  const key = createHash('sha256').update(JSON.stringify([OVERVIEW_BRIEF_SCHEMA_VERSION, model, requestMessages])).digest('hex')
+  const cache = briefCache(provider, options.provider === undefined)
+  const existing = cache.get(key)
+  if (existing) return existing
+  const pending = provider.complete({
+    model, messages: requestMessages, maxTokens: 1_800, temperature: 0, json: true, enableThinking: false,
+  }).then((completion) => ({ status: 'ready', schemaVersion: OVERVIEW_BRIEF_SCHEMA_VERSION, brief: parseBrief(completion.content, usable) }) as OverviewBriefResult)
+    .catch(() => { cache.delete(key); return evidenceOnly() })
+  cache.set(key, pending)
+  if (cache.size > 100) cache.delete(cache.keys().next().value!)
+  return pending
 }

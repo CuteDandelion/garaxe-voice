@@ -13,6 +13,53 @@ const themes = [{
 }] as EffectiveTheme[]
 
 describe('overview intelligence brief', () => {
+  it('reuses one in-flight and completed brief for identical grounded evidence', async () => {
+    const provider = { complete: vi.fn().mockResolvedValue({ content: JSON.stringify({
+      understood: { title: 'Setup slows adoption', narrative: 'Setup friction is the clearest signal.', themeIds: ['theme-1'] },
+      majorOpportunity: null, majorRisk: null,
+      salesImplications: [{ title: 'Lead with setup help', narrative: 'Show buyers how support reduces setup time.', themeIds: ['theme-1'] }],
+      marketingImplications: [{ title: 'Prove a faster start', narrative: 'Use grounded setup evidence in onboarding claims.', themeIds: ['theme-1'] }],
+      nextActions: [
+        { title: 'Inspect setup evidence', rationale: 'Review the cited setup comments.', themeIds: ['theme-1'] },
+        { title: 'Test guided onboarding', rationale: 'Validate a smaller first-run path.', themeIds: ['theme-1'] },
+        { title: 'Measure setup time', rationale: 'Track whether the intervention reduces delay.', themeIds: ['theme-1'] },
+      ],
+    }) }) } as unknown as OpenCodeGoProvider
+
+    const [first, second] = await Promise.all([
+      generateOverviewBrief(themes, { provider }),
+      generateOverviewBrief(themes, { provider }),
+    ])
+    const third = await generateOverviewBrief(themes, { provider })
+
+    expect(first).toEqual(second)
+    expect(third).toEqual(first)
+    expect(provider.complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('regenerates the brief when grounded evidence or model provenance changes', async () => {
+    const provider = { complete: vi.fn().mockResolvedValue({ content: JSON.stringify({
+      understood: { title: 'Setup slows adoption', narrative: 'Setup friction is the clearest signal.', themeIds: ['theme-1'] },
+      majorOpportunity: null, majorRisk: null,
+      salesImplications: [{ title: 'Lead with setup help', narrative: 'Show buyers how support reduces setup time.', themeIds: ['theme-1'] }],
+      marketingImplications: [{ title: 'Prove a faster start', narrative: 'Use grounded setup evidence in onboarding claims.', themeIds: ['theme-1'] }],
+      nextActions: [
+        { title: 'Inspect setup evidence', rationale: 'Review the cited setup comments.', themeIds: ['theme-1'] },
+        { title: 'Test guided onboarding', rationale: 'Validate a smaller first-run path.', themeIds: ['theme-1'] },
+        { title: 'Measure setup time', rationale: 'Track whether the intervention reduces delay.', themeIds: ['theme-1'] },
+      ],
+    }) }) } as unknown as OpenCodeGoProvider
+    const changed = [{ ...themes[0], evidence: [{ ...themes[0].evidence[0], quote: 'Setup took even longer.' }] }] as EffectiveTheme[]
+
+    await generateOverviewBrief(themes, { provider })
+    await generateOverviewBrief(changed, { provider })
+    await generateOverviewBrief(changed, { provider, environment: { GARAXE_OVERVIEW_LLM_MODEL: 'alternate-model' } })
+
+    expect(provider.complete).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(provider.complete).mock.calls[1][0].messages[1].content).toContain('Setup took even longer.')
+    expect(vi.mocked(provider.complete).mock.calls[2][0].model).toBe('alternate-model')
+  })
+
   it('keeps the brief request compact within the approved call budget', async () => {
     const provider = { complete: vi.fn().mockResolvedValue({ content: JSON.stringify({
       understood: { title: 'Setup slows adoption', narrative: 'Setup friction is the clearest signal.', themeIds: ['theme-1'] },

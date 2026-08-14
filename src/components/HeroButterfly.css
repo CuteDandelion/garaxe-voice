@@ -1,0 +1,49 @@
+.hero-butterfly {
+  position: relative;
+  z-index: 2;
+  width: 58px;
+  height: 44px;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  color: #286fb5;
+  background: transparent;
+  cursor: pointer;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+.hero-butterfly svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.hero-butterfly__wing { fill: currentColor; stroke: var(--ink); stroke-width: 1.1; transform-box: fill-box; transform-origin: center; transition: transform 220ms ease; }
+.hero-butterfly__wing--left { opacity: .84; }
+.hero-butterfly__wing--right { opacity: .68; }
+.hero-butterfly__body { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+.hero-butterfly:hover .hero-butterfly__wing--left,
+.hero-butterfly:focus-visible .hero-butterfly__wing--left { transform: rotate(-10deg) scaleY(.88); }
+.hero-butterfly:hover .hero-butterfly__wing--right,
+.hero-butterfly:focus-visible .hero-butterfly__wing--right { transform: rotate(10deg) scaleY(.88); }
+.hero-butterfly.is-gliding { animation: butterfly-glide 1000ms cubic-bezier(.42, 0, .18, 1) both; }
+.hero-butterfly.is-flying { animation: butterfly-flight 1100ms cubic-bezier(.42, 0, .18, 1) both; pointer-events: none; }
+.hero-butterfly.is-gliding .hero-butterfly__wing,
+.hero-butterfly.is-flying .hero-butterfly__wing { animation: butterfly-wing-left 140ms ease-in-out alternate infinite; }
+.hero-butterfly.is-gliding .hero-butterfly__wing--right,
+.hero-butterfly.is-flying .hero-butterfly__wing--right { animation-name: butterfly-wing-right; }
+
+@keyframes butterfly-glide {
+  0%, 100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0); }
+  28% { transform: translate3d(42px, -20px, 0) rotate(-8deg); }
+  62% { transform: translate3d(88px, 5px, 0) rotate(7deg); }
+  82% { transform: translate3d(36px, 18px, 0) rotate(-4deg); }
+}
+@keyframes butterfly-flight {
+  0% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0); }
+  30% { transform: translate3d(var(--flight-x1), var(--flight-y1), 0) scale(1.04) rotate(-9deg); }
+  68% { transform: translate3d(var(--flight-x2), var(--flight-y2), 0) scale(.92) rotate(7deg); }
+  100% { opacity: .18; transform: translate3d(var(--flight-x3), var(--flight-y3), 0) scale(.72) rotate(-4deg); }
+}
+@keyframes butterfly-wing-left { to { transform: rotate(-17deg) scaleY(.72); } }
+@keyframes butterfly-wing-right { to { transform: rotate(17deg) scaleY(.72); } }
+
+@media (max-width: 620px) { .hero-butterfly { width: 50px; height: 38px; margin-bottom: 14px; } }
+@media (prefers-reduced-motion: reduce) {
+  .hero-butterfly, .hero-butterfly__wing { animation: none !important; transition: none !important; transform: none !important; }
+}

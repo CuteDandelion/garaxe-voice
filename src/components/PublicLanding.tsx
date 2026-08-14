@@ -8,6 +8,7 @@ import { CsvImportPreflight, type PreparedCsvImport } from './CsvImportPreflight
 import { getDemoOverviewBrief, type AnalysisCoverageItem, type OverviewBriefResult } from '../lib/api'
 import { DEMO_COMMENT_ALLOWANCE } from '../lib/csv'
 import { categorizeVisibleSignals, emergingThemesFromCoverage, emptyVoiceMapInsight, publicSentiment, publicSignalType } from './VoiceMapWorkspaceContainer'
+import { HeroButterfly } from './HeroButterfly'
 import './PublicLanding.css'
 
 type PublicLandingProps = {
@@ -112,11 +113,12 @@ export function PublicLanding({ onLogin, onDemo }: PublicLandingProps) {
     <main id="top">
       <section className="public-hero" aria-labelledby="public-title">
         <div className="public-hero__copy">
+          <HeroButterfly targetId="hero-demo-cta" onActivate={onDemo} />
           <p className="public-kicker">Customer-language intelligence</p>
           <h1 id="public-title">Turn scattered feedback into <em>evidence.</em></h1>
           <p>Every conclusion stays linked to the exact customer words behind it.</p>
           <div className="public-hero__actions">
-            <button className="public-button public-button--dark" onClick={onDemo}>Try the demo</button>
+            <button id="hero-demo-cta" className="public-button public-button--dark" onClick={onDemo}>Try the demo</button>
             <a href="#product">See how it works</a>
           </div>
         </div>

@@ -68,6 +68,21 @@ describe('AuthGate', () => {
     expect(request).toHaveBeenCalledWith('/api/waitlist', expect.objectContaining({ method: 'POST' }))
   })
 
+  it('does not carry login credentials into the waitlist form', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input) === '/api/auth/status'
+      ? { ok: true, json: async () => ({ data: { needsBootstrap: false } }) } as Response
+      : { ok: false, json: async () => ({ error: { message: 'A valid session is required.' } }) } as Response))
+    render(<AuthGate><p>Protected research</p></AuthGate>)
+
+    fireEvent.change(await screen.findByLabelText('Work email'), { target: { value: 'owner@example.com' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'local-secret' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Join waitlist' }))
+
+    expect(screen.getByLabelText('Name')).toHaveValue('')
+    expect(screen.getByLabelText('Waitlist email')).toHaveValue('')
+    expect(screen.queryByDisplayValue('local-secret')).not.toBeInTheDocument()
+  })
+
   it('keeps the selected account tab readable and visually distinct', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input) === '/api/auth/status'
       ? { ok: true, json: async () => ({ data: { needsBootstrap: false } }) } as Response

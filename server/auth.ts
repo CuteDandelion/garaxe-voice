@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
+import { createClient } from '@supabase/supabase-js'
 import type { Database } from './database'
+import { withDatabaseUser } from './database'
 
 export const authSchemaSql = `
 CREATE TABLE IF NOT EXISTS auth_users (
@@ -55,6 +57,19 @@ export type AuthContext = {
   sessionId: string
   user: { id: string; email: string; displayName: string }
   memberships: Array<{ organizationId: string; organizationName: string; role: OrganizationRole }>
+  verifiedIdentityEmail?: string
+}
+
+export type VerifiedAuthClaims = { sub: string; sessionId: string; email: string }
+export type VerifyAuthClaims = (token: string) => Promise<VerifiedAuthClaims>
+type SupabaseGetClaims = (jwt: string) => Promise<{
+  data: { claims?: Record<string, unknown> | null } | null
+  error: unknown
+}>
+
+type SupabaseAuthEnvironment = {
+  SUPABASE_URL?: string
+  SUPABASE_PUBLISHABLE_KEY?: string
 }
 
 export class AuthError extends Error {
@@ -73,7 +88,7 @@ export function hashSessionToken(token: string) {
 export function parseBearerToken(request: Pick<IncomingMessage, 'headers'>) {
   const value = request.headers.authorization
   if (value) {
-    const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(value)
+    const match = /^Bearer ([A-Za-z0-9._-]+)$/.exec(value)
     if (!match) throw new AuthError('AUTHORIZATION_INVALID', 'Authorization must use a valid Bearer token.', 401)
     return match[1]
   }
@@ -81,6 +96,132 @@ export function parseBearerToken(request: Pick<IncomingMessage, 'headers'>) {
   const session = cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('garaxe_session='))
   const token = session?.slice('garaxe_session='.length)
   return token && /^[A-Za-z0-9_-]+$/.test(token) ? token : null
+}
+
+async function loadAuthContext(database: Database, userId: string, sessionId: string): Promise<AuthContext> {
+  const identity = await database.query<{ userId: string; email: string; displayName: string }>(
+    `SELECT id AS "userId", email, display_name AS "displayName" FROM auth_users WHERE id = $1`, [userId],
+  )
+  const user = identity.rows[0]
+  if (!user) throw new AuthError('ACCOUNT_NOT_PROVISIONED', 'Voice Lab could not prepare your personal workspace. Contact support.', 403)
+  const memberships = await database.query<{
+    organizationId: string
+    organizationName: string
+    role: OrganizationRole
+  }>(
+    `SELECT m.organization_id AS "organizationId", o.name AS "organizationName", m.role
+     FROM organization_memberships m JOIN organizations o ON o.id = m.organization_id
+     WHERE m.user_id = $1 ORDER BY o.name, o.id`,
+    [userId],
+  )
+  return {
+    sessionId,
+    user: { id: user.userId, email: user.email, displayName: user.displayName },
+    memberships: memberships.rows,
+  }
+}
+
+async function provisionPersonalWorkspace(database: Database, claims: VerifiedAuthClaims) {
+  const email = claims.email.trim().toLowerCase()
+  if (!email) throw new AuthError('AUTHENTICATION_REQUIRED', 'A valid session is required.', 401)
+  const displayName = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+  const organizationId = randomUUID()
+  const projectId = randomUUID()
+  await database.transaction(async (transaction) => {
+    const created = await transaction.query(
+      `INSERT INTO auth_users (id, email, display_name) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO NOTHING RETURNING id`,
+      [claims.sub, email, displayName],
+    )
+    if (!created.rows[0]) return
+    await transaction.query('INSERT INTO organizations (id, name) VALUES ($1,$2)', [organizationId, 'Personal workspace'])
+    await transaction.query(
+      `INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1,$2,'owner')`,
+      [organizationId, claims.sub],
+    )
+    await transaction.query(
+      `INSERT INTO projects (id, name, primary_decision) VALUES ($1,$2,$3)`,
+      [projectId, 'Default project', 'explore'],
+    )
+    await transaction.query(
+      'INSERT INTO project_organizations (project_id, organization_id) VALUES ($1,$2)',
+      [projectId, organizationId],
+    )
+  })
+}
+
+export async function authenticateVerifiedToken(
+  database: Database,
+  token: string,
+  verifyClaims: VerifyAuthClaims,
+): Promise<AuthContext> {
+  let claims: VerifiedAuthClaims
+  try {
+    claims = await verifyClaims(token)
+  } catch {
+    throw new AuthError('AUTHENTICATION_REQUIRED', 'A valid session is required.', 401)
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claims.sub)
+    || !claims.sessionId?.trim()) {
+    throw new AuthError('AUTHENTICATION_REQUIRED', 'A valid session is required.', 401)
+  }
+  const verifiedIdentityEmail = claims.email.trim().toLowerCase()
+  const scopedDatabase = withDatabaseUser(database, claims.sub)
+  let context: AuthContext
+  try {
+    context = await loadAuthContext(scopedDatabase, claims.sub, claims.sessionId)
+  } catch (error) {
+    if (!(error instanceof AuthError) || error.code !== 'ACCOUNT_NOT_PROVISIONED') throw error
+    await provisionPersonalWorkspace(scopedDatabase, claims)
+    context = await loadAuthContext(scopedDatabase, claims.sub, claims.sessionId)
+  }
+  if (!verifiedIdentityEmail || context.user.email.trim().toLowerCase() !== verifiedIdentityEmail) {
+    throw new AuthError('ACCOUNT_IDENTITY_MISMATCH', 'This sign-in does not match the provisioned Voice Lab profile.', 403)
+  }
+  return { ...context, verifiedIdentityEmail }
+}
+
+export function createSupabaseClaimsVerifier(getClaims: SupabaseGetClaims): VerifyAuthClaims {
+  return async (token) => {
+    const result = await getClaims(token)
+    const sub = result.data?.claims?.sub
+    const sessionId = result.data?.claims?.session_id
+    const email = result.data?.claims?.email
+    if (result.error || typeof sub !== 'string' || typeof sessionId !== 'string' || typeof email !== 'string') {
+      throw new Error('Invalid Supabase access token.')
+    }
+    return { sub, sessionId, email }
+  }
+}
+
+export function supabaseAuthConfiguration(environment: SupabaseAuthEnvironment) {
+  const url = environment.SUPABASE_URL?.trim()
+  const publishableKey = environment.SUPABASE_PUBLISHABLE_KEY?.trim()
+  if (!url && !publishableKey) return null
+  if (!url || !publishableKey) throw new Error('SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be configured together.')
+  const endpoint = new URL(url)
+  if (endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(endpoint.hostname))) {
+    throw new Error('SUPABASE_URL must use HTTPS or loopback HTTP.')
+  }
+  return { url: url.replace(/\/$/, ''), publishableKey }
+}
+
+let cachedSupabaseVerifier: { key: string; verifier: VerifyAuthClaims } | null = null
+
+export function configuredSupabaseClaimsVerifier(environment: SupabaseAuthEnvironment = process.env) {
+  const configuration = supabaseAuthConfiguration(environment)
+  if (!configuration) return undefined
+  const key = `${configuration.url}\n${configuration.publishableKey}`
+  if (cachedSupabaseVerifier?.key === key) return cachedSupabaseVerifier.verifier
+  const client = createClient(configuration.url, configuration.publishableKey, {
+    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+  })
+  const verifier = createSupabaseClaimsVerifier(async (token) => {
+    const { data, error } = await client.auth.getClaims(token)
+    return { data: { claims: data?.claims as Record<string, unknown> | undefined }, error }
+  })
+  cachedSupabaseVerifier = { key, verifier }
+  return verifier
 }
 
 export async function createIdentity(
@@ -148,27 +289,18 @@ export async function authenticateToken(database: Database, token: string): Prom
   )
   const identity = result.rows[0]
   if (!identity) throw new AuthError('AUTHENTICATION_REQUIRED', 'A valid session is required.', 401)
-  const memberships = await database.query<{
-    organizationId: string
-    organizationName: string
-    role: OrganizationRole
-  }>(
-    `SELECT m.organization_id AS "organizationId", o.name AS "organizationName", m.role
-     FROM organization_memberships m JOIN organizations o ON o.id = m.organization_id
-     WHERE m.user_id = $1 ORDER BY o.name, o.id`,
-    [identity.userId],
-  )
   await database.query('UPDATE auth_sessions SET last_seen_at = NOW() WHERE id = $1', [identity.sessionId])
-  return {
-    sessionId: identity.sessionId,
-    user: { id: identity.userId, email: identity.email, displayName: identity.displayName },
-    memberships: memberships.rows,
-  }
+  return loadAuthContext(database, identity.userId, identity.sessionId)
 }
 
-export async function authenticateRequest(database: Database, request: Pick<IncomingMessage, 'headers'>) {
+export async function authenticateRequest(
+  database: Database,
+  request: Pick<IncomingMessage, 'headers'>,
+  verifyClaims?: VerifyAuthClaims,
+) {
   const token = parseBearerToken(request)
   if (!token) throw new AuthError('AUTHENTICATION_REQUIRED', 'A valid session is required.', 401)
+  if (verifyClaims) return authenticateVerifiedToken(database, token, verifyClaims)
   return authenticateToken(database, token)
 }
 

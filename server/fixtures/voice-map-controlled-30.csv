@@ -1,0 +1,31 @@
+review_id,source,entity,rating,review_text,review_date,language,source_url
+controlled-01,synthetic_qa,Disposable Workspace,2,"The export froze at 90%, so I could not deliver the report on time.",2026-08-01,en,https://example.invalid/controlled/export-stall
+controlled-02,synthetic_qa,Disposable Workspace,2,"The export froze at 90%, so I could not deliver the report on time.",2026-08-02,en,https://example.invalid/controlled/export-stall
+controlled-03,synthetic_qa,Disposable Workspace,2,"Report export stalled near completion and left the delivery unfinished.",2026-08-03,en,https://example.invalid/controlled/export-stall
+controlled-04,synthetic_qa,Disposable Workspace,1,"Finishing an export hangs at the last step, preventing me from sharing results.",2026-08-04,en,https://example.invalid/controlled/export-stall
+controlled-05,synthetic_qa,Disposable Workspace,4,"I want to finish initial setup without guessing which step comes next.",2026-08-05,en,https://example.invalid/controlled/guided-setup
+controlled-06,synthetic_qa,Disposable Workspace,4,"A clear onboarding path would help me complete setup confidently.",2026-08-06,en,https://example.invalid/controlled/guided-setup
+controlled-07,synthetic_qa,Disposable Workspace,4,"During onboarding, I need to understand my progress and next action.",2026-08-07,en,https://example.invalid/controlled/guided-setup
+controlled-08,synthetic_qa,Disposable Workspace,5,"Clear onboarding milestones would make initial configuration easier to complete.",2026-08-08,en,https://example.invalid/controlled/guided-setup
+controlled-09,synthetic_qa,Disposable Workspace,3,"I am hesitant to migrate because I might lose historical customer notes.",2026-08-09,en,https://example.invalid/controlled/migration-risk
+controlled-10,synthetic_qa,Disposable Workspace,3,"Before switching, I need proof that the migration preserves every customer note.",2026-08-10,en,https://example.invalid/controlled/migration-risk
+controlled-11,synthetic_qa,Disposable Workspace,3,"The risk of losing account history makes me reluctant to move from our current tool.",2026-08-11,en,https://example.invalid/controlled/migration-risk
+controlled-12,synthetic_qa,Disposable Workspace,2,"I feel anxious when a save finishes without any confirmation.",2026-08-12,en,https://example.invalid/controlled/save-anxiety
+controlled-13,synthetic_qa,Disposable Workspace,2,"Missing save confirmation makes me nervous that my work disappeared.",2026-08-13,en,https://example.invalid/controlled/save-anxiety
+controlled-14,synthetic_qa,Disposable Workspace,2,"I worry about losing changes whenever the save status is silent.",2026-08-14,en,https://example.invalid/controlled/save-anxiety
+controlled-15,synthetic_qa,Disposable Workspace,2,"The invoice total changes after tax with no explanation, which makes billing confusing.",2026-08-15,en,https://example.invalid/controlled/billing-clarity
+controlled-16,synthetic_qa,Disposable Workspace,2,"Unexpected tax adjustments make the final invoice difficult to understand.",2026-08-16,en,https://example.invalid/controlled/billing-clarity
+controlled-17,synthetic_qa,Disposable Workspace,4,"I need the mobile navigation to keep project search visible while scrolling.",2026-08-17,en,https://example.invalid/controlled/mobile-navigation
+controlled-18,synthetic_qa,Disposable Workspace,4,"Please keep search accessible in the mobile header instead of hiding it in a menu.",2026-08-18,en,https://example.invalid/controlled/mobile-navigation
+controlled-19,synthetic_qa,Disposable Workspace,1,"The password reset link expired before the email arrived.",2026-08-19,en,https://example.invalid/controlled/password-reset
+controlled-20,synthetic_qa,Disposable Workspace,4,"I want invoice PDFs to include the purchase order number.",2026-08-20,en,https://example.invalid/controlled/invoice-pdf
+controlled-21,synthetic_qa,Disposable Workspace,3,"I would not sign an annual contract without a clear cancellation window.",2026-08-21,en,https://example.invalid/controlled/contract-objection
+controlled-22,synthetic_qa,Disposable Workspace,2,"Deleting a workspace without a preview makes me anxious about removing the wrong data.",2026-08-22,en,https://example.invalid/controlled/deletion-anxiety
+controlled-23,synthetic_qa,Disposable Workspace,4,"Please add a keyboard shortcut that opens the evidence drawer.",2026-08-23,en,https://example.invalid/controlled/evidence-shortcut
+controlled-24,synthetic_qa,Disposable Workspace,2,"Weekend support hours are unclear when an urgent import fails.",2026-08-24,en,https://example.invalid/controlled/support-hours
+controlled-25,synthetic_qa,Disposable Workspace,3,"Support replied quickly, but the answer did not explain how to repair the broken import.",2026-08-25,en,https://example.invalid/controlled/support-resolution
+controlled-26,synthetic_qa,Disposable Workspace,3,"Autosave would reduce lost work, although I need assurance that drafts remain private.",2026-08-26,en,https://example.invalid/controlled/autosave-privacy
+controlled-27,synthetic_qa,Disposable Workspace,4,"I felt relieved when the refund arrived, but the unexplained delay still worries me.",2026-08-27,en,https://example.invalid/controlled/refund-relief
+controlled-28,synthetic_qa,Disposable Workspace,2,"The dashboard becomes slow only when a project contains thousands of comments.",2026-08-28,en,https://example.invalid/controlled/large-project-speed
+controlled-29,synthetic_qa,Disposable Workspace,3,"I am unsure whether the trial price will increase when I invite a second analyst.",2026-08-29,en,https://example.invalid/controlled/trial-pricing
+controlled-30,synthetic_qa,Disposable Workspace,4,"I want color labels to include text so the status remains understandable without color.",2026-08-30,en,https://example.invalid/controlled/accessible-status

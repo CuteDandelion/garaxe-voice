@@ -184,12 +184,12 @@ function ReportPreview({ report, downloading, onDownload }: { report: ReportSnap
 }
 
 export function ReportsWorkspace(props: ReportsWorkspaceProps) {
-  if (props.status === 'loading') return <main className="reports-workspace reports-workspace__state" aria-live="polite"><FileText aria-hidden="true" /><h1>Opening the report archive.</h1><p>Loading immutable versions and their source revisions.</p></main>
-  if (props.status === 'error') return <main className="reports-workspace reports-workspace__state" role="alert"><AlertTriangle aria-hidden="true" /><h1>Reports are unavailable.</h1><p>{props.error || 'The report archive could not be loaded.'}</p></main>
+  if (props.status === 'loading') return <section className="reports-workspace reports-workspace__state" aria-label="Reports workspace" aria-live="polite"><FileText aria-hidden="true" /><h1>Opening the report archive.</h1><p>Loading immutable versions and their source revisions.</p></section>
+  if (props.status === 'error') return <section className="reports-workspace reports-workspace__state" aria-label="Reports workspace" role="alert"><AlertTriangle aria-hidden="true" /><h1>Reports are unavailable.</h1><p>{props.error || 'The report archive could not be loaded.'}</p></section>
 
   const selectedId = props.selectedReport?.id ?? null
   return (
-    <main className="reports-workspace">
+    <section className="reports-workspace" aria-label="Reports workspace">
       <CreateReport {...props} />
       {props.status === 'empty' || !props.selectedReport ? (
         <section className="reports-workspace__empty">
@@ -204,6 +204,6 @@ export function ReportsWorkspace(props: ReportsWorkspaceProps) {
           <VersionList reports={props.reports} selectedId={selectedId} downloadingReportId={props.downloadingReportId} onSelect={props.onSelect} onDownload={props.onDownload} />
         </div>
       )}
-    </main>
+    </section>
   )
 }

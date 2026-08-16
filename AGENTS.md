@@ -50,6 +50,8 @@ Build Garaxe Voice Intelligence as a premium, evidence-first research workspaceâ
 - Never log or return access tokens, refresh tokens, raw secrets, or unnecessary reviewer PII.
 - Update governed docs in the same change whenever behavior, schemas, APIs, UX contracts, risks, or decisions change.
 - Run `./scripts/check-docs-sync.sh` before declaring work complete.
+- Local Supabase staging uses only the `voice-lab-local` Docker stack and the git-ignored `.env` loopback URL, publishable key, and database credential. Never copy managed Supabase or Kubernetes secret values into local staging. After the local proof, run `npx supabase stop --project-id voice-lab-local --no-backup` and verify its containers, network, and volumes are gone.
+- Never deploy a candidate to production until that exact build passes a fresh live local Docker-staging E2E. The gate must exercise Demo and authenticated CSV selection/mapping, incremental imports and date filters, every visible Curation correction and reversal, report/PDF generation, waitlist validation/deduplication/private monitoring, first/repeat-login onboarding, tenant isolation, and the governed OWASP upload/admission regressions. Production validation happens only after this local gate; unit, API, or production smoke tests do not substitute for it.
 
 ## Documentation audit
 

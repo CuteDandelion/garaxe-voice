@@ -211,6 +211,16 @@ const concurrencyRetryAt = (now: Date, earliestExpiry: string | null) => {
   return new Date(Number.isFinite(expiry) && expiry > now.getTime() ? expiry : now.getTime() + 1_000).toISOString()
 }
 
+async function wakeConcurrencyWaiters(client: DatabaseClient, provider: string, model: string, now: Date) {
+  const nowIso = now.toISOString()
+  await client.query(
+    `UPDATE llm_jobs SET available_at=$3,retry_after=$3,updated_at=$3
+      WHERE provider=$1 AND model=$2 AND state='rate_wait'
+        AND last_error_code LIKE 'CONCURRENCY_%' AND available_at > $3`,
+    [provider, model, nowIso],
+  )
+}
+
 export function llmIdempotencyKey(input: Pick<EnqueueLlmJob,
   'organizationId' | 'analysisRunId' | 'kind' | 'inputDigest' | 'promptVersion' | 'schemaVersion' | 'routingPolicy'>) {
   return hash(JSON.stringify([
@@ -232,18 +242,20 @@ async function assertTenantRun(client: DatabaseClient, input: Pick<EnqueueLlmJob
 async function releaseReservation(client: DatabaseClient, job: {
   id: string; organizationId: string; projectId: string; analysisRunId: string; reservedMicro: number
 }) {
-  if (job.reservedMicro === 0) return
+  const reservedMicro = Number(job.reservedMicro)
+  positiveSafeInteger(reservedMicro, 'reserved_micro')
+  if (reservedMicro === 0) return
   for (const scope of budgetScopes(job)) {
     await client.query(
       `UPDATE llm_budget_accounts SET reserved_micro = reserved_micro - $3, updated_at = NOW()
        WHERE scope_type = $1 AND scope_id = $2 AND reserved_micro >= $3`,
-      [scope.type, scope.id, job.reservedMicro],
+      [scope.type, scope.id, reservedMicro],
     )
     await client.query(
       `INSERT INTO llm_budget_ledger
        (id, job_id, scope_type, scope_id, entry_type, reserved_delta_micro, spent_delta_micro)
        VALUES ($1,$2,$3,$4,'release',$5,0) ON CONFLICT DO NOTHING`,
-      [randomUUID(), job.id, scope.type, scope.id, -job.reservedMicro],
+      [randomUUID(), job.id, scope.type, scope.id, -reservedMicro],
     )
   }
 }
@@ -593,7 +605,7 @@ export class DurableLlmQueue {
   }
 
   async complete(jobId: string, leaseToken: string, input: {
-    result: unknown; inputTokens?: number; outputTokens?: number; actualMicro?: number; usageVerified: boolean; now?: Date
+    result: unknown; inputTokens?: number; outputTokens?: number; actualMicro?: number; usageVerified: boolean; model?: string; now?: Date
   }) {
     const now = input.now || new Date()
     for (const [field, value] of [['input_tokens', input.inputTokens], ['output_tokens', input.outputTokens], ['actual_micro', input.actualMicro]] as const) {
@@ -610,20 +622,22 @@ export class DurableLlmQueue {
       )
       const job = found.rows[0]
       if (!job || !['leased', 'running'].includes(job.state) || !(await this.validLease(client, jobId, leaseToken, now))) return false
-      const charged = job.reservedMicro === 0 ? 0 : input.usageVerified ? input.actualMicro : job.reservedMicro
-      if (charged === undefined || charged > job.reservedMicro) throw new Error('LLM_USAGE_EXCEEDS_RESERVATION')
-      for (const scope of job.reservedMicro > 0 ? budgetScopes(job) : []) {
+      const reservedMicro = Number(job.reservedMicro)
+      positiveSafeInteger(reservedMicro, 'reserved_micro')
+      const charged = reservedMicro === 0 ? 0 : input.usageVerified ? input.actualMicro : reservedMicro
+      if (charged === undefined || charged > reservedMicro) throw new Error('LLM_USAGE_EXCEEDS_RESERVATION')
+      for (const scope of reservedMicro > 0 ? budgetScopes(job) : []) {
         const updated = await client.query(
           `UPDATE llm_budget_accounts SET reserved_micro=reserved_micro-$3,spent_micro=spent_micro+$4,updated_at=$5
            WHERE scope_type=$1 AND scope_id=$2 AND reserved_micro >= $3 RETURNING scope_id`,
-          [scope.type, scope.id, job.reservedMicro, charged, now.toISOString()],
+          [scope.type, scope.id, reservedMicro, charged, now.toISOString()],
         )
         if (!updated.rows[0]) throw new Error('LLM_BUDGET_RECONCILIATION_FAILED')
         await client.query(
           `INSERT INTO llm_budget_ledger
            (id,job_id,scope_type,scope_id,entry_type,reserved_delta_micro,spent_delta_micro,usage_verified)
            VALUES ($1,$2,$3,$4,'reconciliation',$5,$6,$7)`,
-          [randomUUID(), jobId, scope.type, scope.id, -job.reservedMicro, charged, input.usageVerified],
+          [randomUUID(), jobId, scope.type, scope.id, -reservedMicro, charged, input.usageVerified],
         )
       }
       await client.query(
@@ -635,14 +649,17 @@ export class DurableLlmQueue {
         `INSERT INTO llm_attempts
          (id,job_id,attempt_number,provider,model,outcome,input_tokens,output_tokens,charged_micro,usage_verified,started_at,completed_at)
          VALUES ($1,$2,$3,$4,$5,'succeeded',$6,$7,$8,$9,$10,$10)`,
-        [randomUUID(), jobId, job.attemptCount, job.provider, job.model, input.inputTokens ?? null,
+        [randomUUID(), jobId, job.attemptCount, job.provider, input.model ?? job.model, input.inputTokens ?? null,
           input.outputTokens ?? null, charged, input.usageVerified, now.toISOString()],
       )
+      await wakeConcurrencyWaiters(client, job.provider, job.model, now)
       return true
     })
   }
 
-  async fail(jobId: string, leaseToken: string, input: { errorCode: string; retryAfter?: Date; now?: Date; retryable?: boolean }) {
+  async fail(jobId: string, leaseToken: string, input: {
+    errorCode: string; retryAfter?: Date; now?: Date; retryable?: boolean; model?: string
+  }) {
     const now = input.now || new Date()
     return this.database.transaction(async (client) => {
       const found = await client.query<{
@@ -669,20 +686,41 @@ export class DurableLlmQueue {
         `INSERT INTO llm_attempts
          (id,job_id,attempt_number,provider,model,outcome,error_code,started_at,completed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)`,
-        [randomUUID(), jobId, job.attemptCount, job.provider, job.model, dead ? 'failed' : 'retry',
+        [randomUUID(), jobId, job.attemptCount, job.provider, input.model ?? job.model, dead ? 'failed' : 'retry',
           input.errorCode, now.toISOString()],
       )
+      await wakeConcurrencyWaiters(client, job.provider, job.model, now)
       return true
     })
+  }
+
+  async recordAttemptFailure(jobId: string, leaseToken: string, input: { model: string; errorCode: string; now?: Date }) {
+    const now = input.now || new Date()
+    const result = await this.database.query(
+      `INSERT INTO llm_attempts (id,job_id,attempt_number,provider,model,outcome,error_code,started_at,completed_at)
+       SELECT $1,id,attempt_count,provider,$4,'failed',$5,$3,$3 FROM llm_jobs
+       WHERE id=$2 AND state='running' AND lease_token_hash=$6 AND lease_expires_at>$3 RETURNING id`,
+      [randomUUID(), jobId, now.toISOString(), input.model, input.errorCode, hash(leaseToken)],
+    )
+    return result.rows.length === 1
+  }
+
+  async hasAttemptForModel(jobId: string, model: string) {
+    const result = await this.database.query<{ found: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM llm_attempts WHERE job_id=$1 AND model=$2
+       AND outcome IN ('succeeded','retry','failed')) AS found`, [jobId, model],
+    )
+    return result.rows[0]?.found ?? false
   }
 
   async completeFallback(jobId: string, now = new Date(), reason = 'DETERMINISTIC_FALLBACK') {
     return this.database.transaction(async (client) => {
       const found = await client.query<{
         id: string; organizationId: string; projectId: string; analysisRunId: string; reservedMicro: number; state: LlmJobState
+        provider: string; model: string
       }>(
         `SELECT id,organization_id AS "organizationId",project_id AS "projectId",analysis_run_id AS "analysisRunId",
-          reserved_micro AS "reservedMicro",state FROM llm_jobs WHERE id=$1 FOR UPDATE`, [jobId],
+          reserved_micro AS "reservedMicro",state,provider,model FROM llm_jobs WHERE id=$1 FOR UPDATE`, [jobId],
       )
       const job = found.rows[0]
       if (!job || ['succeeded', 'cancelled', 'fallback_completed'].includes(job.state)) return false
@@ -691,6 +729,7 @@ export class DurableLlmQueue {
         `UPDATE llm_jobs SET state='fallback_completed',reserved_micro=0,lease_owner=NULL,lease_token_hash=NULL,
           lease_expires_at=NULL,last_error_code=$3,completed_at=$2,updated_at=$2 WHERE id=$1`, [jobId, now.toISOString(), reason],
       )
+      await wakeConcurrencyWaiters(client, job.provider, job.model, now)
       return true
     })
   }
@@ -803,9 +842,10 @@ export class DurableLlmQueue {
     return this.database.transaction(async (client) => {
       const found = await client.query<{
         id: string; organizationId: string; projectId: string; analysisRunId: string; reservedMicro: number; state: LlmJobState
+        provider: string; model: string
       }>(
         `SELECT id,organization_id AS "organizationId",project_id AS "projectId",analysis_run_id AS "analysisRunId",
-          reserved_micro AS "reservedMicro",state FROM llm_jobs WHERE id=$1 FOR UPDATE`, [jobId],
+          reserved_micro AS "reservedMicro",state,provider,model FROM llm_jobs WHERE id=$1 FOR UPDATE`, [jobId],
       )
       const job = found.rows[0]
       if (!job || ['succeeded', 'dead_lettered', 'cancelled', 'fallback_completed'].includes(job.state)) return false
@@ -814,6 +854,7 @@ export class DurableLlmQueue {
         `UPDATE llm_jobs SET state='cancelled',reserved_micro=0,lease_owner=NULL,lease_token_hash=NULL,
           lease_expires_at=NULL,completed_at=$2,updated_at=$2 WHERE id=$1`, [jobId, now.toISOString()],
       )
+      await wakeConcurrencyWaiters(client, job.provider, job.model, now)
       return true
     })
   }

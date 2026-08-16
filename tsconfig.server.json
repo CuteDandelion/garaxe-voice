@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["server/**/*.ts", "src/lib/csv.ts"]
+  "include": ["server/**/*.ts", "src/lib/csv.ts", "src/lib/sourceUrl.ts"]
 }

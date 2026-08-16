@@ -11,8 +11,11 @@ async function violations() {
 describe('application accessibility', () => {
   it('has no detectable structural accessibility violations across delivered workspaces', async () => {
     document.documentElement.lang = 'en'
-    document.title = 'garaxe.voice'
+    document.title = 'Voice Lab'
     render(<App />)
+    await screen.findByRole('heading', { name: /Turn scattered feedback into evidence/i })
+    expect(await violations()).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }))
     const navigation = await screen.findByRole('complementary', { name: 'Project navigation' })
     expect(await violations()).toEqual([])
     const delivered = [

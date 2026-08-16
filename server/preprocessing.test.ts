@@ -47,13 +47,13 @@ describe('preprocessReviews', () => {
     ], { ...config, languages: ['en'], dateFrom: '2026-01-01' })
     expect(result.reviews.map(({ reason }) => reason)).toEqual([
       'user_excluded', 'outside_date_range', 'rating_only', 'empty_text', 'too_short',
-      'user_excluded', 'suspected_spam', 'included', 'duplicate',
+      'user_excluded', 'suspected_spam', 'included', 'included',
     ])
     expect(result.qualityReport.exclusionReasons).toEqual({
       rating_only: 1,
       empty_text: 1,
       too_short: 1,
-      duplicate: 1,
+      duplicate: 0,
       unsupported_language: 0,
       outside_date_range: 1,
       suspected_spam: 1,
@@ -86,11 +86,11 @@ describe('preprocessReviews', () => {
       dateTo: '2026-06-30',
     })
     expect(result.reviews.map(({ reason }) => reason)).toEqual([
-      'included', 'user_excluded', 'user_excluded', 'duplicate', 'outside_date_range',
+      'included', 'user_excluded', 'user_excluded', 'included', 'outside_date_range',
     ])
   })
 
-  it('detects exact, hash, and near duplicates but keeps different ratings separate', () => {
+  it('records exact, hash, and near-duplicate groups without excluding valid feedback', () => {
     const result = preprocessReviews([
       base('canonical', { bodyOriginal: 'The staff were kind and the service was exceptionally fast today.' }),
       base('exact', { bodyOriginal: ' The staff were kind and the service was exceptionally fast today. ' }),
@@ -100,7 +100,7 @@ describe('preprocessReviews', () => {
       base('rating', { bodyOriginal: 'The staff were kind and the service was exceptionally fast today.', ratingValue: 4 }),
     ], config)
     expect(result.reviews.map(({ reason }) => reason)).toEqual([
-      'included', 'duplicate', 'duplicate', 'included', 'duplicate', 'included',
+      'included', 'included', 'included', 'included', 'included', 'included',
     ])
     expect(result.reviews[1].duplicateOfReviewId).toBe('canonical')
     expect(result.qualityReport.duplicateGroups).toEqual([
@@ -109,12 +109,12 @@ describe('preprocessReviews', () => {
     ])
   })
 
-  it('still detects exact text duplicates when provider identifiers produced different hashes', () => {
+  it('retains exact text from distinct provider records while recording the similarity group', () => {
     const result = preprocessReviews([
       base('first', { bodyOriginal: 'The delivery was late and the fries were cold and soggy.', ratingValue: 2, canonicalHash: 'provider-id-a' }),
       base('second', { bodyOriginal: 'The delivery was late and the fries were cold and soggy.', ratingValue: 2, canonicalHash: 'provider-id-b' }),
     ], config)
-    expect(result.reviews.map(({ reason }) => reason)).toEqual(['included', 'duplicate'])
+    expect(result.reviews.map(({ reason }) => reason)).toEqual(['included', 'included'])
     expect(result.reviews[1].duplicateOfReviewId).toBe('first')
   })
 

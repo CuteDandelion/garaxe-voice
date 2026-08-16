@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { bootstrapOwner, getAuthStatus, getCurrentAuth, resumeLocalSession, resumeStagingSession } from '../lib/api'
+import { getAuthStatus, getCurrentAuth, joinWaitlist, resumeStagingSession } from '../lib/api'
+import { isLocalQaAuthEnabled, isSupabaseAuthConfigured, signInWithPassword, signOutSupabase } from '../lib/supabaseAuth'
 import './AuthGate.css'
 
 type AuthGateProps = {
@@ -7,17 +8,17 @@ type AuthGateProps = {
 }
 
 export function AuthGate({ children }: AuthGateProps) {
-  const [state, setState] = useState<'loading' | 'ready' | 'bootstrap' | 'signed-out'>('loading')
+  const [state, setState] = useState<'loading' | 'ready' | 'signed-out'>('loading')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [stagingAccessEnabled, setStagingAccessEnabled] = useState(false)
+  const [activeTab, setActiveTab] = useState<'login' | 'waitlist'>('login')
+  const [waitlistState, setWaitlistState] = useState<'idle' | 'submitting' | 'success'>('idle')
+  const [waitlistError, setWaitlistError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
-    void getAuthStatus().then(async ({ needsBootstrap, stagingAccessEnabled: staging }) => {
+    void getAuthStatus().then(async () => {
       if (!active) return
-      setStagingAccessEnabled(Boolean(staging))
-      if (needsBootstrap) return setState('bootstrap')
       try {
         await getCurrentAuth()
         if (active) setState('ready')
@@ -28,55 +29,49 @@ export function AuthGate({ children }: AuthGateProps) {
     return () => { active = false }
   }, [])
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    setSubmitting(true)
-    setError(null)
-    try {
-      await bootstrapOwner({
-        displayName: String(data.get('displayName') || ''),
-        email: String(data.get('email') || ''),
-        organizationName: String(data.get('organizationName') || ''),
-      })
-      setState('ready')
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Owner setup failed.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   async function resume(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     setSubmitting(true); setError(null)
     try {
       const email = String(data.get('email') || '')
-      if (stagingAccessEnabled) await resumeStagingSession(email, String(data.get('accessKey') || ''))
-      else await resumeLocalSession(email)
+      const password = String(data.get('password') || '')
+      if (isSupabaseAuthConfigured()) {
+        await signInWithPassword(email, password)
+        try { await getCurrentAuth() }
+        catch (caught) { await signOutSupabase(); throw caught }
+      } else if (isLocalQaAuthEnabled()) {
+        await resumeStagingSession(email, password)
+      } else {
+        throw new Error('Voice Lab authentication is not configured.')
+      }
       setState('ready')
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Session could not be restored.') }
     finally { setSubmitting(false) }
   }
 
-  if (state === 'ready') return typeof children === 'function' ? children(() => setState('signed-out')) : children
-  if (state === 'loading') return <main className="auth-gate"><p className="auth-gate__eyebrow">Garaxe Voice Intelligence</p><h1>Opening your research workspace.</h1></main>
-  if (state === 'signed-out') return <main className="auth-gate"><section className="auth-gate__panel"><p className="auth-gate__eyebrow">{stagingAccessEnabled ? 'Staging access required' : 'Local session required'}</p><h1>Your workspace is protected.</h1><p>{stagingAccessEnabled ? 'Use the staging owner email and access key. Paid beta will replace this gate with the configured identity provider.' : 'Resume an existing owner session on this local machine. Production uses the configured identity provider; this route is unavailable there.'}</p><form onSubmit={resume}><label>Owner email<input name="email" type="email" placeholder="owner@example.com" required /></label>{stagingAccessEnabled ? <label>Staging access key<input name="accessKey" type="password" autoComplete="current-password" required /></label> : null}{error ? <p role="alert">{error}</p> : null}<button type="submit" disabled={submitting}>{submitting ? 'Opening workspace…' : stagingAccessEnabled ? 'Open staging workspace' : 'Resume local workspace'}</button></form></section></main>
+  async function submitWaitlist(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    setWaitlistState('submitting'); setWaitlistError(null)
+    try {
+      await joinWaitlist(String(data.get('name') || ''), String(data.get('email') || ''))
+      setWaitlistState('success')
+    } catch (caught) {
+      setWaitlistError(caught instanceof Error ? caught.message : 'Waitlist request could not be saved.')
+      setWaitlistState('idle')
+    }
+  }
 
-  return <main className="auth-gate">
-    <section className="auth-gate__panel">
-      <p className="auth-gate__eyebrow">First-run owner setup</p>
-      <h1>Give this research workspace an owner.</h1>
-      <p>This one-time step creates the first organization and closes public bootstrap access.</p>
-      <form onSubmit={submit}>
-        <label>Organization<input name="organizationName" defaultValue="Acme Software" required /></label>
-        <label>Your name<input name="displayName" defaultValue="Alex Rivera" required /></label>
-        <label>Work email<input name="email" type="email" placeholder="alex@example.com" required /></label>
-        {error ? <p role="alert">{error}</p> : null}
-        <button type="submit" disabled={submitting}>{submitting ? 'Creating owner…' : 'Create protected workspace'}</button>
-      </form>
-    </section>
-  </main>
+  if (state === 'ready') return typeof children === 'function' ? children(() => setState('signed-out')) : children
+  if (state === 'loading') return <main className="auth-gate"><a className="auth-gate__eyebrow" href="/" aria-label="Voice Lab home">Voice Lab</a><h1>Opening your research workspace.</h1></main>
+  return <main className="auth-gate"><section className="auth-gate__panel">
+    <a className="auth-gate__eyebrow" href="/" aria-label="Voice Lab home">Voice Lab</a>
+    <div className="auth-gate__tabs" role="tablist" aria-label="Account access">
+      <button type="button" role="tab" aria-selected={activeTab === 'login'} aria-controls="auth-login-panel" onClick={() => setActiveTab('login')}>Log in</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'waitlist'} aria-controls="auth-waitlist-panel" onClick={() => setActiveTab('waitlist')}>Join waitlist</button>
+    </div>
+    {activeTab === 'login' ? <div key="login" id="auth-login-panel" role="tabpanel"><h1>Log in to Voice Lab</h1><p>Use your workspace email and password. Your personal workspace and Default project are prepared automatically on first login.</p><form onSubmit={resume}><label>Work email<input name="email" type="email" placeholder="owner@example.com" autoComplete="username" required /></label><label>Password<input name="password" type="password" autoComplete="current-password" required /></label>{error ? <p role="alert">{error}</p> : null}<button type="submit" disabled={submitting}>{submitting ? 'Opening workspace…' : 'Log in'}</button></form></div> : <div key="waitlist" id="auth-waitlist-panel" role="tabpanel"><h1>Join the waitlist</h1><p>Voice Lab is pre-launch. Joining the waitlist does not create an account or grant access.</p>{waitlistState === 'success' ? <p className="auth-gate__status" role="status">You’re on the Voice Lab waitlist. We’ll use these details only for launch access updates.</p> : <form onSubmit={submitWaitlist}><label>Name<input name="name" type="text" autoComplete="name" maxLength={120} required /></label><label>Waitlist email<input name="email" type="email" autoComplete="email" maxLength={254} required /></label><label className="auth-gate__consent"><input name="consent" type="checkbox" required />Store these details for Voice Lab launch updates.</label>{waitlistError ? <p role="alert">{waitlistError}</p> : null}<button type="submit" disabled={waitlistState === 'submitting'}>{waitlistState === 'submitting' ? 'Joining…' : 'Join waitlist'}</button></form>}</div>}
+  </section></main>
 }

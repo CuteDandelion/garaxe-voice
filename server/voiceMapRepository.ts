@@ -5,15 +5,22 @@ export async function getVoiceMapArtifact(database: Database, runId: string) {
     `SELECT artifact, synthesis_version AS "synthesisVersion" FROM voice_maps WHERE analysis_run_id = $1`, [runId],
   )
   if (!artifactResult.rows[0]) return null
+  const interpreted = artifactResult.rows[0].synthesisVersion === 'llm-interpreted-theme-engine-v1'
   const themes = await database.query<Record<string, unknown>>(
     `SELECT t.id, t.rank, t.name, t.description AS summary, t.theme_type AS type, t.sentiment, t.confidence,
       t.metrics, t.validation, t.engine_version AS "engineVersion"
-     FROM themes t WHERE t.analysis_run_id = $1 ORDER BY t.rank, t.id`, [runId],
+     FROM themes t WHERE t.analysis_run_id = $1
+       AND ($2::boolean = false OR (
+         t.validation->>'status' = 'validated'
+         AND t.validation->'interpretationCandidate'->>'publicationAction' = 'publish'
+         AND COALESCE(t.validation->'interpretationCandidate'->>'groupingAction', 'keep') = 'keep'
+       ))
+     ORDER BY t.rank, t.id`, [runId, interpreted],
   )
   const evidence = await database.query<Record<string, unknown>>(
     `SELECT te.theme_id AS "themeId", rs.id, rs.review_id AS "reviewId", rs.quote_text AS quote,
       rs.quote_start AS "quoteStart", rs.quote_end AS "quoteEnd", te.evidence_strength AS strength,
-      te.is_representative AS "isRepresentative", r.body_original AS "originalText", r.rating_value AS rating,
+      te.is_representative AS "isRepresentative", r.body_original AS "originalText", r.rating_value AS rating, r.rating_scale AS "ratingScale",
       r.provider, r.entity_name AS entity, r.language, r.source_created_at AS "sourceCreatedAt", r.source_url AS "sourceUrl"
      FROM theme_evidence te
      JOIN review_signals rs ON rs.id = te.signal_id

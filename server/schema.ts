@@ -1,4 +1,12 @@
 export const schemaSql = `
+CREATE TABLE IF NOT EXISTS waitlist_signups (
+  id UUID PRIMARY KEY,
+  name TEXT NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  email_normalized TEXT NOT NULL UNIQUE CHECK (char_length(email_normalized) BETWEEN 3 AND 254),
+  consent_version TEXT NOT NULL CHECK (char_length(consent_version) BETWEEN 1 AND 80),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
@@ -143,6 +151,8 @@ CREATE TABLE IF NOT EXISTS themes (
   UNIQUE(analysis_run_id, theme_type, name)
 );
 
+ALTER TABLE themes DROP CONSTRAINT IF EXISTS themes_analysis_run_id_theme_type_name_key;
+
 CREATE TABLE IF NOT EXISTS theme_evidence (
   theme_id TEXT NOT NULL REFERENCES themes(id) ON DELETE CASCADE,
   signal_id TEXT NOT NULL REFERENCES review_signals(id) ON DELETE CASCADE,
@@ -180,12 +190,18 @@ CREATE TABLE IF NOT EXISTS curation_actions (
   sequence INTEGER NOT NULL CHECK (sequence > 0),
   action_type TEXT NOT NULL CHECK (action_type IN (
     'approve_theme', 'reject_theme', 'edit_theme', 'pin_evidence', 'exclude_evidence',
-    'merge_themes', 'split_theme', 'mark_ready'
+    'merge_themes', 'split_theme', 'create_custom_theme', 'move_evidence', 'restore_revision', 'mark_ready'
   )),
   payload JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(curation_session_id, sequence)
 );
+
+ALTER TABLE curation_actions DROP CONSTRAINT IF EXISTS curation_actions_action_type_check;
+ALTER TABLE curation_actions ADD CONSTRAINT curation_actions_action_type_check CHECK (action_type IN (
+  'approve_theme', 'reject_theme', 'edit_theme', 'pin_evidence', 'exclude_evidence',
+  'merge_themes', 'split_theme', 'create_custom_theme', 'move_evidence', 'restore_revision', 'mark_ready'
+));
 
 CREATE INDEX IF NOT EXISTS curation_sessions_run_idx ON curation_sessions(analysis_run_id);
 CREATE INDEX IF NOT EXISTS curation_actions_session_sequence_idx ON curation_actions(curation_session_id, sequence);
@@ -206,4 +222,5 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE INDEX IF NOT EXISTS reports_project_generated_idx ON reports(project_id, generated_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS reports_run_version_idx ON reports(analysis_run_id, version DESC);
+
 `

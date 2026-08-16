@@ -1,6 +1,6 @@
 # Bluerose staging deployment
 
-This runbook deploys the repository-defined staging environment to the protected Bluerose cluster and publishes `voice.misakirose.com` through the existing Cloudflare Tunnel. It does not establish paid-beta production readiness.
+This runbook deploys the repository-defined staging environment to the protected Bluerose cluster and publishes `voicelab.elseform.tech` through the existing Cloudflare Tunnel. It does not establish paid-beta production readiness. The former hostname remains configured but unadvertised as a rollback route until the candidate and new-domain checks pass.
 
 ## Invariants
 
@@ -8,7 +8,7 @@ This runbook deploys the repository-defined staging environment to the protected
 - Preserve namespace `portfolio`, namespace `cloudflare-tunnel`, Kubernetes core services, `portfolio.misakirose.com`, and the tunnel's terminal `http_status:404` rule.
 - Deploy only immutable `ghcr.io/cutedandelion/garaxe-{api,web}:<full-git-sha>` images. The committed manifests contain an intentional tag placeholder; `render-manifests.sh` accepts only a full lowercase Git SHA and creates the temporary tree used for validation and deployment. The corresponding GHCR packages must be public before rollout; public GHCR containers permit anonymous cluster pulls.
 - Never commit or print `garaxe-secrets`. `secret.example.yaml` is documentation only and is excluded from every Kustomization.
-- OpenCode Go cluster interpretation is enabled for this staging target with the evaluated `qwen3.7-plus` model, capacity limits, and spend enforcement disabled. Keep Google integration disabled until its credentials, egress policy, provider approval, and operational limits are separately authorized.
+- OpenCode Go cluster interpretation is enabled for this staging target with explicit primary and fallback model IDs from the ConfigMap, capacity limits, and spend enforcement disabled. The fallback is attempted once only for a classified transient primary failure; model IDs remain deployment-tunable. Keep Google integration disabled until its credentials, egress policy, provider approval, and operational limits are separately authorized.
 - Standard Kubernetes NetworkPolicy cannot select the OpenCode FQDN. The API may reach public IPv4 destinations only on TCP 443, with private, local, test, and reserved networks excluded; the server-owned adapter fixes the configured provider base URL. Treat broader public-HTTPS reachability as a staging exception, not a production egress design.
 
 ## Repository verification
@@ -31,11 +31,11 @@ Run typecheck, tests, web/server builds, the full npm audit, container builds, o
 Immediately before mutation, fetch the live zone, DNS records, tunnel, connections, and configuration. Insert this ingress rule before the final fallback without replacing unrelated rules:
 
 ```yaml
-- hostname: voice.misakirose.com
+- hostname: voicelab.elseform.tech
   service: http://garaxe-web.garaxe.svc.cluster.local:80
 ```
 
-Create a proxied CNAME `voice.misakirose.com` pointing to `9fbd3101-3691-49e1-b0f0-865d96d570fd.cfargotunnel.com`. Re-read both APIs, verify tunnel connections, then check DNS, TLS, expected Garaxe content, staging login, API mutations, and Portfolio at least three times.
+Create a proxied CNAME `voicelab.elseform.tech` pointing to `9fbd3101-3691-49e1-b0f0-865d96d570fd.cfargotunnel.com`. Re-read both APIs, verify tunnel connections, then check DNS, TLS, expected Voice Lab content, staging login, API mutations, and Portfolio at least three times. Keep the former hostname configured but absent from customer-facing links and metadata until rollback is no longer required.
 
 ## Backup and rollback
 

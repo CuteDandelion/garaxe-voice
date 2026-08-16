@@ -52,17 +52,22 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: garaxe-secrets
+                  name: garaxe-voice-lab-secrets
                   key: database-url
-            - name: GARAXE_STAGING_ACCESS_KEY
+            - name: SUPABASE_PUBLISHABLE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: garaxe-secrets
-                  key: staging-access-key
+                  name: garaxe-voice-lab-secrets
+                  key: supabase-publishable-key
+            - name: VOICE_LAB_ADMIN_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: garaxe-voice-lab-secrets
+                  key: voice-lab-admin-emails
             - name: OPENCODE_GO_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: garaxe-secrets
+                  name: garaxe-voice-lab-secrets
                   key: opencode-go-api-key
           ports:
             - name: http
@@ -103,7 +108,13 @@ spec:
           volumeMounts:
             - name: temporary-files
               mountPath: /tmp
+            - name: database-ca
+              mountPath: /etc/voice-lab/database
+              readOnly: true
       volumes:
         - name: temporary-files
           emptyDir:
             sizeLimit: 1Gi
+        - name: database-ca
+          configMap:
+            name: garaxe-database-ca

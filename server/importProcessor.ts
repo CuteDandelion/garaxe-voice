@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { Database } from './database'
-import { normalizeImportText, parseCsv, summarizeImport, validateImportRow, type CanonicalField, type ColumnMapping, type CsvRow } from '../src/lib/csv'
+import type { Database, DatabaseClient } from './database'
+import { CsvValidationError, normalizeImportText, parseCsv, preflightCsv, summarizeImport, validateImportRow, type CanonicalField, type ColumnMapping, type CsvRow } from '../src/lib/csv'
 
-type ImportRequest = {
+export type ImportRequest = {
   projectId: string
   fileName: string
   rawCsv: string
   mapping: ColumnMapping
   originalSource: { encoding: 'utf8' | 'base64'; content: string; mediaType: string }
+  allowLoopbackHttp?: boolean
 }
 
 function hash(value: string) {
@@ -19,10 +20,17 @@ function mappedValue(row: CsvRow, mapping: ColumnMapping, field: CanonicalField)
   return column ? row[column]?.trim() || null : null
 }
 
-export async function createImportJob(database: Database, request: ImportRequest) {
+export async function createImportJob(database: DatabaseClient, request: ImportRequest) {
+  if (!request.fileName.toLowerCase().endsWith('.csv') || request.originalSource.encoding !== 'utf8' || request.originalSource.mediaType !== 'text/csv' || request.originalSource.content !== request.rawCsv) {
+    throw new CsvValidationError('CSV files only. Select the original CSV and try again.')
+  }
   const parsed = parseCsv(request.rawCsv)
+  const unexpectedMappings = Object.keys(request.mapping).filter((header) => !parsed.headers.includes(header))
+  if (unexpectedMappings.length) throw new CsvValidationError(`Mapping contains columns not present in the CSV: ${unexpectedMappings.join(', ')}.`)
+  const preflight = preflightCsv(parsed, request.mapping, { allowLoopbackHttp: request.allowLoopbackHttp })
+  if (!preflight.valid) throw new CsvValidationError([...preflight.columnErrors, ...preflight.rowErrors].map((item) => item.message).join(' '))
   const jobId = randomUUID()
-  const sourceBytes = Buffer.from(request.originalSource.content, request.originalSource.encoding === 'base64' ? 'base64' : 'utf8')
+  const sourceBytes = Buffer.from(request.originalSource.content, 'utf8')
   await database.query(
     `INSERT INTO import_jobs
       (id, project_id, file_name, status, total_rows, source_media_type, source_encoding, source_content, source_hash)
@@ -39,8 +47,7 @@ export async function processImportJob(
   rows: CsvRow[],
 ) {
   await database.query(`UPDATE import_jobs SET status = 'processing' WHERE id = $1`, [jobId])
-  const summary = summarizeImport(rows, request.mapping)
-  const mappedColumns = new Set(Object.keys(request.mapping).filter((header) => request.mapping[header] !== 'unmapped'))
+  const summary = summarizeImport(rows, request.mapping, { allowLoopbackHttp: request.allowLoopbackHttp })
   const seenExternalIds = new Set<string>()
 
   try {
@@ -56,14 +63,14 @@ export async function processImportJob(
         [sourceRecordId, jobId, request.projectId, index + 2, rawPayload, hash(rawPayload)],
         )
 
-        const validation = validateImportRow(row, request.mapping)
+        const validation = validateImportRow(row, request.mapping, { allowLoopbackHttp: request.allowLoopbackHttp })
         if (!validation.valid) continue
-        const { rating, ratingRaw, ratingScale } = validation
+        const { rating, ratingRaw, ratingScale, reviewDate } = validation
         const body = validation.text || null
 
         const externalId = mappedValue(row, request.mapping, 'review_id')
         const normalizedBody = normalizeImportText(validation.text)
-        const canonicalHash = hash(normalizedBody.length >= 20 ? normalizedBody : (externalId || `${normalizedBody}|${ratingRaw || ''}`))
+        const canonicalHash = hash(externalId || (normalizedBody.length >= 20 ? normalizedBody : `${normalizedBody}|${ratingRaw || ''}`))
         if (externalId) {
           if (seenExternalIds.has(externalId)) continue
           seenExternalIds.add(externalId)
@@ -73,7 +80,10 @@ export async function processImportJob(
           )
           if (existingId.rows[0]) continue
         }
-        const metadata = Object.fromEntries(Object.entries(row).filter(([header]) => !mappedColumns.has(header)))
+        const metadata = {
+          ...(mappedValue(row, request.mapping, 'customer_id') ? { customerId: mappedValue(row, request.mapping, 'customer_id') } : {}),
+          ...(mappedValue(row, request.mapping, 'context') ? { context: mappedValue(row, request.mapping, 'context') } : {}),
+        }
 
         await transaction.query(
           `INSERT INTO reviews (
@@ -90,8 +100,9 @@ export async function processImportJob(
             mappedValue(row, request.mapping, 'source'), mappedValue(row, request.mapping, 'entity'),
             rating, ratingScale, mappedValue(row, request.mapping, 'title'),
             body, mappedValue(row, request.mapping, 'language'), mappedValue(row, request.mapping, 'reviewer_name'),
-            mappedValue(row, request.mapping, 'owner_reply'), mappedValue(row, request.mapping, 'source_url'),
-            mappedValue(row, request.mapping, 'review_date'), !body, canonicalHash, JSON.stringify(metadata),
+            mappedValue(row, request.mapping, 'owner_reply'), validation.sourceUrl,
+            reviewDate && /^\d{4}-\d{2}-\d{2}$/.test(reviewDate) ? `${reviewDate}T00:00:00Z` : reviewDate || null,
+            !body, canonicalHash, JSON.stringify(metadata),
           ],
         )
         await transaction.query(`UPDATE import_jobs SET processed_rows = $2 WHERE id = $1`, [jobId, index + 1])

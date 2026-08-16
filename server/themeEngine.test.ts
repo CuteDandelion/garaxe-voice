@@ -55,6 +55,27 @@ describe('formThemes', () => {
     ])
   })
 
+  it('does not merge distinct semantic clusters that share a broad aspect label', () => {
+    const reviews = ['phone-1', 'phone-2', 'phone-3', 'allergen-1', 'allergen-2', 'allergen-3'].map((id) => review(id))
+    const signals = [
+      ...['phone-1', 'phone-2', 'phone-3'].map((id) => signal(id, 'pain_point', 'customer support', 'The support phone went unanswered.', { attributes: { cluster: 2, clusterStatus: 'clustered' } })),
+      ...['allergen-1', 'allergen-2', 'allergen-3'].map((id) => signal(id, 'pain_point', 'customer support', 'Our server explained every allergen clearly.', { attributes: { cluster: 7, clusterStatus: 'clustered' } })),
+    ]
+
+    const themes = formThemes(signals, reviews)
+
+    expect(themes).toHaveLength(2)
+    expect(themes.map((theme) => theme.evidence.reviewIds)).toEqual(expect.arrayContaining([
+      ['allergen-1', 'allergen-2', 'allergen-3'],
+      ['phone-1', 'phone-2', 'phone-3'],
+    ]))
+    expect(themes.every((theme) => theme.evidence.representativeQuotes.every((quote) =>
+      theme.evidence.reviewIds.includes(quote.reviewId)))).toBe(true)
+    const sourceByReview = new Map(signals.map((item) => [item.reviewId, item.quoteText]))
+    expect(themes.every((theme) => theme.evidence.representativeQuotes.every((quote) =>
+      sourceByReview.get(quote.reviewId)?.slice(quote.quoteStart, quote.quoteEnd) === quote.quoteText))).toBe(true)
+  })
+
   it('protects independent counts from duplicate reviews and repeated same-review signals', () => {
     const reviews = [
       review('canonical', { canonicalHash: 'same' }),

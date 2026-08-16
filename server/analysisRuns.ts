@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { Database } from './database'
+import type { Database, DatabaseClient } from './database'
 import { preprocessReviews, type PreprocessingConfig, type PreprocessingReview } from './preprocessing'
-import { analyzeSemantically, createDeterministicTestEmbeddingProvider, DETERMINISTIC_TEST_CLUSTERING_OPTIONS, SEMANTIC_ANALYSIS_VERSION } from './semanticAnalysis'
+import { analyzeSemantically, createDeterministicTestEmbeddingProvider, createOnnxEmbeddingProvider, createOnnxSentimentProvider, DETERMINISTIC_TEST_CLUSTERING_OPTIONS, SEMANTIC_ANALYSIS_VERSION } from './semanticAnalysis'
 import { formThemes, synthesizeVoiceMap, THEME_ENGINE_VERSION } from './themeEngine'
 import { enqueueClusterInterpretation, settleClusterInterpretationRuns } from './clusterInterpretation'
+import { projectCachedEmbeddingProvider } from './incrementalAnalysis'
 
 export const ANALYSIS_PIPELINE_VERSION = 'semantic-voice-map-v5'
 
@@ -91,7 +92,7 @@ function preprocessingConfiguration(configuration: AnalysisConfiguration): Prepr
   }
 }
 
-export async function createAnalysisRun(database: Database, projectId: string, configuration: AnalysisConfiguration) {
+export async function createAnalysisRun(database: DatabaseClient, projectId: string, configuration: AnalysisConfiguration) {
   const id = randomUUID()
   const snapshot = structuredClone(configuration)
   await database.query(
@@ -162,10 +163,13 @@ export async function processAnalysisRun(database: Database, runId: string) {
       entity: review.entityName,
       sourceCreatedAt: review.sourceCreatedAt,
     }))
+    const embeddingProvider = process.env.NODE_ENV === 'test'
+      ? createDeterministicTestEmbeddingProvider()
+      : projectCachedEmbeddingProvider(database, run.rows[0].projectId, await createOnnxEmbeddingProvider())
     const semantic = await analyzeSemantically(
       extractionInput,
-      process.env.NODE_ENV === 'test' ? createDeterministicTestEmbeddingProvider() : undefined,
-      undefined,
+      embeddingProvider,
+      process.env.NODE_ENV === 'test' ? undefined : await createOnnxSentimentProvider(),
       process.env.NODE_ENV === 'test' ? DETERMINISTIC_TEST_CLUSTERING_OPTIONS : undefined,
     )
     const extracted = semantic.signals

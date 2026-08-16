@@ -116,7 +116,7 @@ export const DETERMINISTIC_TEST_CLUSTERING_OPTIONS: Partial<SemanticClusteringOp
   ambiguityMargin: 0.05,
 }
 
-const clauseBoundary = /(?<=[.!?;:\n])\s+|\s+(?=(?:but|however|although|yet|while)\b)/giu
+const clauseBoundary = /(?<=[.!?;:\n])(?:\s+|(?=\p{Lu}))|\s+(?=(?:but|however|although|yet|while)\b)/giu
 const termsPattern = /[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}'’-]*/gu
 const representationStopWords = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'but', 'by', 'for', 'from', 'had', 'has', 'have', 'i', 'in', 'is', 'it',
@@ -473,38 +473,6 @@ export function createDeterministicTestSentimentProvider(): SentimentProvider {
   }
 }
 
-function clusterByPolarity(
-  vectors: number[][],
-  polarities: SegmentPolarity[],
-  segments: ReviewSegment[],
-  options: Partial<SemanticClusteringOptions> = {},
-) {
-  const assignments = Array.from({ length: vectors.length }, () => -1)
-  let offset = 0
-  let outlierCount = 0
-  let ambiguousSegmentCount = 0
-  const diagnostics: SemanticClusterDiagnostic[] = []
-  let parameters = validatedClusteringOptions()
-  for (const sentiment of ['negative', 'neutral', 'positive'] as const) {
-    const indices = polarities.flatMap((polarity, index) => polarity.sentiment === sentiment ? [index] : [])
-    if (!indices.length) continue
-    const cohort = clusterEmbeddingsByMutualKnn(
-      indices.map((index) => vectors[index]),
-      indices.map((index) => segments[index].reviewId),
-      options,
-    )
-    parameters = cohort.parameters
-    indices.forEach((sourceIndex, index) => {
-      assignments[sourceIndex] = cohort.assignments[index] < 0 ? -1 : offset + cohort.assignments[index]
-    })
-    diagnostics.push(...cohort.diagnostics.map((diagnostic) => ({ ...diagnostic, cluster: diagnostic.cluster + offset })))
-    offset += cohort.clusterCount
-    outlierCount += cohort.outlierCount
-    ambiguousSegmentCount += cohort.ambiguousSegmentCount
-  }
-  return { assignments, clusterCount: offset, outlierCount, ambiguousSegmentCount, parameters, diagnostics }
-}
-
 export async function analyzeSemantically(
   reviews: SignalExtractionReview[],
   provider?: EmbeddingProvider,
@@ -526,7 +494,7 @@ export async function analyzeSemantically(
   ])
   if (vectors.length !== segments.length || vectors.some((vector) => vector.length !== embeddingProvider.dimensions)) throw new Error('Semantic embedding output does not match the segmented dataset.')
   if (polarities.length !== segments.length) throw new Error('Sentiment output does not match the segmented dataset.')
-  const clustering = clusterByPolarity(vectors, polarities, segments, clusteringOptions)
+  const clustering = clusterEmbeddingsByMutualKnn(vectors, segments.map((segment) => segment.reviewId), clusteringOptions)
   const { assignments, clusterCount } = clustering
   const representations = clusterRepresentations(segments, assignments)
   const clusterCounts = assignments.reduce<Map<number, number>>((counts, cluster) => counts.set(cluster, (counts.get(cluster) ?? 0) + 1), new Map())
@@ -544,7 +512,7 @@ export async function analyzeSemantically(
       ordinal,
       reviewId: segment.reviewId,
       signalType: classification.type,
-      label: cluster < 0 ? 'Unclustered feedback' : `Customers discuss ${normalizedAspect}`,
+      label: cluster < 0 ? 'Individual feedback signal' : `Customers discuss ${normalizedAspect}`,
       normalizedAspect,
       sentiment: classification.sentiment,
       confidence: cluster < 0 ? 0.35 : Math.min(0.92, 0.58 + ((clusterCounts.get(cluster) ?? 1) / Math.max(segments.length, 1))),

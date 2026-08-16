@@ -12,8 +12,22 @@
     "build:server": "esbuild server/index.ts server/migrate.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outdir=dist-server",
     "start:server": "node dist-server/index.js",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=1",
     "test:server": "GARAXE_DB_DIR=memory:// vitest run server",
+    "test:e2e:public-demo": "tsx scripts/verify-public-demo.ts",
+    "test:e2e:public-demo:held-out": "VOICE_MAP_E2E_MATRIX=held-out tsx scripts/verify-public-demo.ts",
+    "test:e2e:public-demo:categories": "VOICE_MAP_E2E_MATRIX=balanced-categories tsx scripts/verify-public-demo.ts",
+    "test:e2e:public-demo:independent": "VOICE_MAP_E2E_MATRIX=independent-realistic tsx scripts/verify-public-demo.ts",
+    "test:e2e:public-demo:incremental": "VOICE_MAP_E2E_MATRIX=incremental tsx scripts/verify-public-demo.ts",
+    "test:e2e:authenticated": "tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:authenticated:held-out": "VOICE_MAP_E2E_MATRIX=held-out tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:authenticated:blinded-100": "VOICE_MAP_E2E_MATRIX=blinded-100 tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:authenticated:blinded-100:repeatability": "VOICE_MAP_E2E_MATRIX=blinded-100 VOICE_MAP_PAIR_REPEATABILITY=1 tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:authenticated:categories": "VOICE_MAP_E2E_MATRIX=balanced-categories tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:authenticated:independent": "VOICE_MAP_E2E_MATRIX=independent-realistic tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:authenticated:incremental": "VOICE_MAP_E2E_MATRIX=incremental tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
+    "test:e2e:local-supabase-auth": "tsx --env-file=.env scripts/verify-local-supabase-auth.ts",
+    "test:performance:contract": "vitest run scripts/voice-lab-performance-contract.test.ts",
     "evaluate:semantic": "tsx server/evaluation/semanticClusterEvaluator.ts",
     "prewarm:models": "tsx scripts/prewarm-models.ts",
     "typecheck": "tsc -b --pretty false",
@@ -26,11 +40,11 @@
     "@fontsource/inter": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.8",
     "@huggingface/transformers": "^3.8.1",
+    "@supabase/supabase-js": "2.112.3",
     "lucide-react": "^0.468.0",
     "pg": "^8.22.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "read-excel-file": "^9.3.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -48,5 +62,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "3.2.6"
+  },
+  "overrides": {
+    "sharp": "0.35.3"
   }
 }

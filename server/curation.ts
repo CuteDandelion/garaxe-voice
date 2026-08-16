@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database'
+import { CANONICAL_CATEGORIES, SIGNAL_TAXONOMY_VERSION, canonicalOutcome, categoryThemeType, signalTypeThemeType, type CanonicalCategory, type CanonicalSignalType } from './canonicalOutcome'
 
 export type CurationSessionStatus = 'draft' | 'ready'
 export type CurationActionType =
@@ -10,6 +11,9 @@ export type CurationActionType =
   | 'exclude_evidence'
   | 'merge_themes'
   | 'split_theme'
+  | 'create_custom_theme'
+  | 'move_evidence'
+  | 'restore_revision'
   | 'mark_ready'
 
 export type CurationSession = {
@@ -41,6 +45,7 @@ export type CuratedEvidence = {
   entity: string | null
   provider: string
   rating: number | null
+  ratingScale?: number | null
   sourceCreatedAt: string | Date | null
   confidence: number
   pinned: boolean
@@ -53,8 +58,14 @@ export type EffectiveTheme = {
   originThemeIds: string[]
   rank: number
   name: string
+  topic: string
+  primarySignalType?: CanonicalSignalType
+  signalTaxonomyVersion?: string
+  proposedTypeLabel?: string | null
   summary: string
   type: string
+  signalTypes: string[]
+  categories: ActionableCategory[]
   sentiment: string
   confidence: string
   validationStatus: string
@@ -62,6 +73,8 @@ export type EffectiveTheme = {
   evidence: CuratedEvidence[]
   groupingSuggestion: { action: 'split'; reason: string } | null
   publishable: boolean
+  origin: 'model_confirmed' | 'user_curated'
+  provenance: { createdBy: string | null; createdAt: string | Date | null; sourceReviewIds: string[] }
 }
 
 export type CurationProjection = {
@@ -105,17 +118,23 @@ type EvidenceRow = {
   entity: string | null
   provider: string
   rating: number | null
+  ratingScale: number | null
   sourceCreatedAt: string | Date | null
 }
 
 type InterpretationCandidate = {
   label: string
   evaluation: 'praise' | 'pain' | 'mixed'
+  signalTypes: string[]
   rootCause: string | null
   consequence: string | null
   publicationAction: 'publish' | 'discard'
   groupingAction: 'keep' | 'split'
   groupingReason: string | null
+  primaryCategory: CanonicalCategory | null
+  primarySignalType: CanonicalSignalType | null
+  sentiment: 'positive' | 'neutral' | 'negative' | null
+  topic: string | null
 }
 
 function interpretationCandidate(validation: Record<string, unknown>): InterpretationCandidate | null {
@@ -126,12 +145,46 @@ function interpretationCandidate(validation: Record<string, unknown>): Interpret
   return {
     label: candidate.label,
     evaluation: candidate.evaluation as InterpretationCandidate['evaluation'],
+    signalTypes: Array.isArray(candidate.signalTypes) ? candidate.signalTypes.filter((item): item is string => typeof item === 'string') : [],
     rootCause: typeof candidate.rootCause === 'string' ? candidate.rootCause : null,
     consequence: typeof candidate.consequence === 'string' ? candidate.consequence : null,
     publicationAction: candidate.publicationAction === 'discard' ? 'discard' : 'publish',
     groupingAction: candidate.groupingAction === 'split' ? 'split' : 'keep',
     groupingReason: typeof candidate.groupingReason === 'string' ? candidate.groupingReason : null,
+    primaryCategory: CANONICAL_CATEGORIES.includes(String(candidate.primaryCategory ?? validation.category) as CanonicalCategory)
+      ? (candidate.primaryCategory ?? validation.category) as CanonicalCategory : null,
+    primarySignalType: typeof candidate.primarySignalType === 'string'
+      ? candidate.primarySignalType as CanonicalSignalType : null,
+    sentiment: ['positive', 'neutral', 'negative'].includes(String(candidate.sentiment))
+      ? candidate.sentiment as 'positive' | 'neutral' | 'negative' : null,
+    topic: typeof (candidate.topic ?? candidate.aspect) === 'string' ? String(candidate.topic ?? candidate.aspect) : null,
   }
+}
+
+type ActionableCategory = CanonicalCategory
+
+function categoryForSignalType(signalType: string): ActionableCategory {
+  if (signalType === 'objection') return 'objection'
+  if (signalType === 'emotion') return 'emotion'
+  if (['desired_outcome', 'praise', 'purchase_trigger'].includes(signalType)) return 'desired_outcome'
+  if (signalType === 'feature_request') return 'desired_outcome'
+  if (signalType === 'pain' || signalType === 'operational_issue') return 'pain'
+  return 'other'
+}
+
+function categoriesForSignalTypes(signalTypes: string[]) {
+  return [...new Set(signalTypes.map(categoryForSignalType))]
+}
+
+function themeType(candidate: InterpretationCandidate | null, fallback: string) {
+  if (candidate?.primarySignalType) return signalTypeThemeType(candidate.primarySignalType)
+  if (candidate?.primaryCategory) return categoryThemeType(candidate.primaryCategory)
+  const primary = candidate?.signalTypes[0]
+  if (primary === 'objection' || primary === 'emotion' || primary === 'desired_outcome' || primary === 'praise') return primary
+  if (primary === 'purchase_trigger') return 'purchase_driver'
+  if (primary === 'operational_issue') return 'operational_failure'
+  if (primary === 'pain') return 'pain_point'
+  return candidate?.evaluation === 'praise' ? 'praise' : candidate?.evaluation === 'pain' ? 'pain_point' : fallback
 }
 
 function interpretedSummary(candidate: InterpretationCandidate | null, fallback: string) {
@@ -147,7 +200,7 @@ type SplitGroup = { name: string; summary?: string; signalIds: string[] }
 
 const actionTypes = new Set<CurationActionType>([
   'approve_theme', 'reject_theme', 'edit_theme', 'pin_evidence', 'exclude_evidence',
-  'merge_themes', 'split_theme', 'mark_ready',
+  'merge_themes', 'split_theme', 'create_custom_theme', 'move_evidence', 'restore_revision', 'mark_ready',
 ])
 
 export class CurationError extends Error {
@@ -207,11 +260,6 @@ async function getSession(database: Database, sessionId: string) {
 }
 
 async function loadMachineThemes(database: Database, runId: string) {
-  const voiceMap = await database.query<{ synthesisVersion: string }>(
-    `SELECT synthesis_version AS "synthesisVersion" FROM voice_maps WHERE analysis_run_id = $1`,
-    [runId],
-  )
-  const requiresPublishedInterpretation = voiceMap.rows[0]?.synthesisVersion === 'llm-interpreted-theme-engine-v1'
   const themes = await database.query<MachineThemeRow>(
     `SELECT id, rank, name, description AS summary, theme_type AS type, sentiment, confidence, validation
      FROM themes WHERE analysis_run_id = $1 ORDER BY rank, id`,
@@ -220,7 +268,7 @@ async function loadMachineThemes(database: Database, runId: string) {
   const evidence = await database.query<EvidenceRow>(
     `SELECT te.theme_id AS "themeId", rs.id AS "signalId", rs.review_id AS "reviewId",
       rs.quote_text AS quote, rs.quote_start AS "quoteStart", rs.quote_end AS "quoteEnd", rs.confidence,
-      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating,
+      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating, r.rating_scale AS "ratingScale",
       r.source_created_at AS "sourceCreatedAt"
      FROM theme_evidence te
      JOIN themes t ON t.id = te.theme_id
@@ -230,44 +278,91 @@ async function loadMachineThemes(database: Database, runId: string) {
      ORDER BY t.rank, te.is_representative DESC, rs.confidence DESC, rs.id`,
     [runId],
   )
-  return themes.rows.flatMap((theme): EffectiveTheme[] => {
+  const emerging = await database.query<EvidenceRow & { label: string; signalType: string; attributes: Record<string, unknown> }>(
+    `SELECT NULL::uuid AS "themeId", rs.id AS "signalId", rs.review_id AS "reviewId", rs.label,
+      rs.signal_type AS "signalType", rs.quote_text AS quote, rs.quote_start AS "quoteStart",
+      rs.quote_end AS "quoteEnd", rs.confidence, rs.attributes,
+      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating, r.rating_scale AS "ratingScale",
+      r.source_created_at AS "sourceCreatedAt"
+     FROM review_signals rs JOIN reviews r ON r.id = rs.review_id
+     WHERE rs.analysis_run_id = $1
+       AND (rs.attributes ? 'canonicalOutcome' OR rs.attributes ? 'emergingInterpretation')
+       AND NOT EXISTS (
+         SELECT 1 FROM theme_evidence te JOIN themes t ON t.id = te.theme_id
+         WHERE te.signal_id = rs.id
+           AND t.validation->'interpretationCandidate'->>'publicationAction' = 'publish'
+           AND t.validation->>'status' = 'validated'
+           AND COALESCE(t.validation->'interpretationCandidate'->>'groupingAction', 'keep') = 'keep'
+       )
+     ORDER BY r.imported_at, r.id, rs.quote_start, rs.id`,
+    [runId],
+  )
+  const clustered = themes.rows.flatMap((theme): EffectiveTheme[] => {
     const validationStatus = typeof theme.validation?.status === 'string' ? theme.validation.status : 'insufficient_evidence'
     const interpretation = interpretationCandidate(theme.validation)
-    if (interpretation?.publicationAction === 'discard'
-      || (requiresPublishedInterpretation && (!interpretation || interpretation.groupingAction === 'split'))) return []
+    if (validationStatus === 'superseded') return []
+    if (emerging.rows.length > 0 && (validationStatus !== 'validated' || interpretation?.publicationAction !== 'publish' || interpretation.groupingAction === 'split')) return []
+    const themeEvidence = evidence.rows.filter((item) => item.themeId === theme.id).map((item) => ({
+      signalId: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd,
+      originalText: item.originalText, entity: item.entity, provider: item.provider, rating: item.rating, ratingScale: item.ratingScale,
+      sourceCreatedAt: item.sourceCreatedAt, confidence: item.confidence, pinned: false, excluded: false,
+    }))
     return [{
       id: theme.id,
       machineThemeId: theme.id,
       originThemeIds: [theme.id],
       rank: theme.rank,
       name: interpretation?.label || theme.name,
+      topic: interpretation?.topic || theme.name,
+      primarySignalType: interpretation?.primarySignalType || undefined,
+      signalTaxonomyVersion: typeof (theme.validation.interpretationCandidate as Record<string, unknown> | undefined)?.signalTaxonomyVersion === 'string'
+        ? String((theme.validation.interpretationCandidate as Record<string, unknown>).signalTaxonomyVersion) : undefined,
       summary: interpretedSummary(interpretation, theme.summary),
-      type: interpretation?.evaluation === 'praise' ? 'praise' : interpretation?.evaluation === 'pain' ? 'pain_point' : theme.type,
-      sentiment: interpretation?.evaluation === 'praise' ? 'positive' : interpretation?.evaluation === 'pain' ? 'negative' : theme.sentiment,
+      type: themeType(interpretation, theme.type),
+      signalTypes: interpretation?.signalTypes || [],
+      categories: interpretation?.primaryCategory ? [interpretation.primaryCategory] : categoriesForSignalTypes(interpretation?.signalTypes || []),
+      sentiment: interpretation?.sentiment || (interpretation?.evaluation === 'praise' ? 'positive' : interpretation?.evaluation === 'pain' ? 'negative' : theme.sentiment),
       confidence: theme.confidence,
       validationStatus,
-      status: validationStatus === 'validated' ? 'pending' : 'not_reviewable',
-      evidence: evidence.rows.filter((item) => item.themeId === theme.id).map((item) => ({
-        signalId: item.signalId,
-        reviewId: item.reviewId,
-        quote: item.quote,
-        quoteStart: item.quoteStart,
-        quoteEnd: item.quoteEnd,
-        originalText: item.originalText,
-        entity: item.entity,
-        provider: item.provider,
-        rating: item.rating,
-        sourceCreatedAt: item.sourceCreatedAt,
-        confidence: item.confidence,
-        pinned: false,
-        excluded: false,
-      })),
+      status: themeEvidence.length ? 'pending' : 'not_reviewable',
+      evidence: themeEvidence,
       groupingSuggestion: interpretation?.groupingAction === 'split' && interpretation.groupingReason
         ? { action: 'split', reason: interpretation.groupingReason }
         : null,
       publishable: false,
+      origin: 'model_confirmed',
+      provenance: { createdBy: null, createdAt: null, sourceReviewIds: [] },
     }]
   })
+  return [...clustered, ...emerging.rows.map((item, index): EffectiveTheme => {
+    const emergingInterpretation = item.attributes.canonicalOutcome || item.attributes.emergingInterpretation
+    const outcome = canonicalOutcome(emergingInterpretation)
+    const candidate = emergingInterpretation && typeof emergingInterpretation === 'object' && !Array.isArray(emergingInterpretation)
+      ? emergingInterpretation as Record<string, unknown> : {}
+    const signalTypes = outcome?.signalTypes || (Array.isArray(candidate.signalTypes)
+      ? candidate.signalTypes.filter((signalType): signalType is string => typeof signalType === 'string') : [item.signalType]
+    )
+    const categories = outcome ? [outcome.primaryCategory] : categoriesForSignalTypes(signalTypes)
+    return {
+      id: `emerging:${item.signalId}`, machineThemeId: `emerging:${item.signalId}`, originThemeIds: [],
+      rank: clustered.length + index + 1, name: outcome?.label || (typeof candidate.label === 'string' ? candidate.label : item.label),
+      topic: outcome?.topic || (typeof candidate.aspect === 'string' ? candidate.aspect : item.label),
+      primarySignalType: outcome?.primarySignalType,
+      signalTaxonomyVersion: outcome?.signalTaxonomyVersion,
+      proposedTypeLabel: outcome?.proposedTypeLabel,
+      summary: 'This comment has its own topic; more feedback may confirm recurrence.',
+      type: outcome ? outcome.signalTaxonomyVersion === SIGNAL_TAXONOMY_VERSION
+        ? signalTypeThemeType(outcome.primarySignalType) : categoryThemeType(outcome.primaryCategory)
+        : themeType({ label: item.label, evaluation: 'mixed', signalTypes, sentiment: null, rootCause: null, consequence: null, publicationAction: 'publish', groupingAction: 'keep', groupingReason: null, primaryCategory: null, primarySignalType: null, topic: null }, item.signalType),
+      signalTypes, categories, sentiment: outcome?.sentiment || 'neutral', confidence: 'Emerging', validationStatus: 'validated', status: 'pending',
+      evidence: [{
+        signalId: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd,
+        originalText: item.originalText, entity: item.entity, provider: item.provider, rating: item.rating, ratingScale: item.ratingScale,
+        sourceCreatedAt: item.sourceCreatedAt, confidence: item.confidence, pinned: false, excluded: false,
+      }], groupingSuggestion: null, publishable: false, origin: 'model_confirmed',
+      provenance: { createdBy: null, createdAt: null, sourceReviewIds: [item.reviewId] },
+    }
+  })]
 }
 
 export async function listCurationActions(database: Database, sessionId: string) {
@@ -281,7 +376,7 @@ export async function listCurationActions(database: Database, sessionId: string)
 }
 
 function copyTheme(theme: EffectiveTheme): EffectiveTheme {
-  return { ...theme, originThemeIds: [...theme.originThemeIds], evidence: theme.evidence.map((item) => ({ ...item })) }
+  return { ...theme, originThemeIds: [...theme.originThemeIds], signalTypes: [...theme.signalTypes], categories: [...theme.categories], evidence: theme.evidence.map((item) => ({ ...item })), provenance: { ...theme.provenance, sourceReviewIds: [...theme.provenance.sourceReviewIds] } }
 }
 
 function actionThemeId(action: CurationAction) {
@@ -303,11 +398,45 @@ function mergedEvidence(themes: EffectiveTheme[]) {
   return [...bySignal.values()].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.confidence - a.confidence || a.signalId.localeCompare(b.signalId))
 }
 
-function applyActions(machineThemes: EffectiveTheme[], actions: CurationAction[]) {
+function applyActions(machineThemes: EffectiveTheme[], actions: CurationAction[], unclusteredEvidence: CuratedEvidence[]) {
   const effective = new Map(machineThemes.map((theme) => [theme.id, copyTheme(theme)]))
 
   for (const action of actions) {
     if (action.actionType === 'mark_ready') continue
+    if (action.actionType === 'restore_revision') continue
+    if (action.actionType === 'create_custom_theme') {
+      const signalIds = new Set(action.payload.signalIds as string[])
+      const bySignal = new Map<string, CuratedEvidence>()
+      for (const theme of effective.values()) {
+        for (const item of theme.evidence) if (signalIds.has(item.signalId)) bySignal.set(item.signalId, { ...item })
+        theme.evidence = theme.evidence.filter((item) => !signalIds.has(item.signalId))
+      }
+      for (const item of unclusteredEvidence) if (signalIds.has(item.signalId) && !bySignal.has(item.signalId)) bySignal.set(item.signalId, { ...item })
+      const evidence = [...bySignal.values()]
+      effective.set(`curated:${action.id}`, {
+        id: `curated:${action.id}`, machineThemeId: null, originThemeIds: [], rank: machineThemes.length + action.sequence / 100,
+        name: String(action.payload.name), summary: String(action.payload.summary), type: 'curated', sentiment: 'mixed',
+        topic: String(action.payload.name),
+        signalTypes: [], categories: [],
+        confidence: 'Emerging', validationStatus: 'user_curated', status: 'approved', evidence, groupingSuggestion: null,
+        publishable: evidence.length > 0, origin: 'user_curated', provenance: {
+          createdBy: String(action.payload.createdBy), createdAt: action.createdAt,
+          sourceReviewIds: action.payload.reviewIds as string[],
+        },
+      })
+      continue
+    }
+    if (action.actionType === 'move_evidence') {
+      const source = effective.get(String(action.payload.fromThemeId))
+      const target = effective.get(String(action.payload.toThemeId))
+      const index = source?.evidence.findIndex((item) => item.signalId === action.payload.signalId) ?? -1
+      if (!source || !target || index < 0) continue
+      const [moved] = source.evidence.splice(index, 1)
+      target.evidence.push(moved)
+      target.origin = 'user_curated'
+      target.provenance = { createdBy: String(action.payload.createdBy), createdAt: action.createdAt, sourceReviewIds: [...new Set(target.evidence.map((item) => item.reviewId))] }
+      continue
+    }
     if (action.actionType === 'merge_themes') {
       const ids = action.payload.themeIds as string[]
       const sources = ids.map((id) => effective.get(id)).filter((theme): theme is EffectiveTheme => Boolean(theme))
@@ -319,8 +448,11 @@ function applyActions(machineThemes: EffectiveTheme[], actions: CurationAction[]
         originThemeIds: ids,
         rank: Math.min(...sources.map((theme) => theme.rank)),
         name: String(action.payload.name || sources.map((theme) => theme.name).join(' + ')),
+        topic: String(action.payload.name || sources.map((theme) => theme.topic).join(' + ')),
         summary: String(action.payload.summary || sources.map((theme) => theme.summary).join(' ')),
         type: sources[0]?.type || 'curated',
+        signalTypes: [...new Set(sources.flatMap((theme) => theme.signalTypes))],
+        categories: [...new Set(sources.flatMap((theme) => theme.categories))],
         sentiment: sources.every((theme) => theme.sentiment === sources[0]?.sentiment) ? sources[0]?.sentiment || 'mixed' : 'mixed',
         confidence: sources[0]?.confidence || 'Moderate',
         validationStatus: 'validated',
@@ -328,6 +460,8 @@ function applyActions(machineThemes: EffectiveTheme[], actions: CurationAction[]
         evidence,
         groupingSuggestion: null,
         publishable: evidence.some((item) => !item.excluded),
+        origin: 'user_curated',
+        provenance: { createdBy: String(action.payload.createdBy || ''), createdAt: action.createdAt, sourceReviewIds: [...new Set(evidence.map((item) => item.reviewId))] },
       })
       continue
     }
@@ -351,6 +485,8 @@ function applyActions(machineThemes: EffectiveTheme[], actions: CurationAction[]
           evidence,
           groupingSuggestion: null,
           publishable: evidence.some((item) => !item.excluded),
+          origin: 'user_curated',
+          provenance: { createdBy: String(action.payload.createdBy || ''), createdAt: action.createdAt, sourceReviewIds: [...new Set(evidence.map((item) => item.reviewId))] },
         })
       })
       continue
@@ -363,6 +499,8 @@ function applyActions(machineThemes: EffectiveTheme[], actions: CurationAction[]
     if (action.actionType === 'edit_theme') {
       if (action.payload.name) theme.name = String(action.payload.name)
       if (action.payload.summary) theme.summary = String(action.payload.summary)
+      theme.origin = 'user_curated'
+      theme.provenance = { createdBy: String(action.payload.createdBy || ''), createdAt: action.createdAt, sourceReviewIds: [...new Set(theme.evidence.map((item) => item.reviewId))] }
     }
     if (action.actionType === 'pin_evidence' || action.actionType === 'exclude_evidence') {
       const signalId = String(action.payload.signalId)
@@ -404,9 +542,34 @@ export async function getCurationProjection(database: Database, runId: string): 
   const machine = await loadMachineThemes(database, runId)
   const session = await getSessionByRun(database, runId)
   const actions = session ? await listCurationActions(database, session.id) : []
-  const effective = applyActions(machine, actions)
-  const machineProjected = effective.filter((theme) => theme.machineThemeId !== null)
+  let projectedActions: CurationAction[] = []
+  const revisions = new Map<number, CurationAction[]>([[0, []]])
+  for (const action of actions) {
+    projectedActions = action.actionType === 'restore_revision'
+      ? revisions.get(Number(action.payload.revision)) || []
+      : [...projectedActions, action]
+    revisions.set(action.sequence, projectedActions)
+  }
+  const unclusteredEvidence = await loadUnclusteredEvidence(database, runId)
+  const effective = applyActions(machine, projectedActions, unclusteredEvidence)
+  const originals = new Map(machine.map((theme) => [theme.id, theme]))
+  const machineProjected = effective.filter((theme) => theme.machineThemeId !== null && theme.evidence.length > 0).map((theme) => {
+    const original = originals.get(theme.machineThemeId || theme.id)
+    return original ? { ...theme, name: original.name, topic: original.topic, summary: original.summary } : theme
+  })
   return { session, machineThemes: machineProjected, effectiveThemes: effective, actions, readiness: readiness(machineProjected, effective, session) }
+}
+
+async function loadUnclusteredEvidence(database: Database, runId: string) {
+  const result = await database.query<EvidenceRow>(
+    `SELECT '' AS "themeId", rs.id AS "signalId", rs.review_id AS "reviewId", rs.quote_text AS quote,
+      rs.quote_start AS "quoteStart", rs.quote_end AS "quoteEnd", rs.confidence, r.body_original AS "originalText",
+      r.entity_name AS entity, r.provider, r.rating_value AS rating, r.source_created_at AS "sourceCreatedAt"
+     FROM review_signals rs JOIN reviews r ON r.id = rs.review_id
+     LEFT JOIN theme_evidence te ON te.signal_id = rs.id
+     WHERE rs.analysis_run_id = $1 AND te.signal_id IS NULL ORDER BY rs.id`, [runId],
+  )
+  return result.rows.map((item): CuratedEvidence => ({ ...item, pinned: false, excluded: false }))
 }
 
 export async function createCurationSession(database: Database, runId: string) {
@@ -416,16 +579,20 @@ export async function createCurationSession(database: Database, runId: string) {
   const existing = await getSessionByRun(database, runId)
   if (existing) return { session: existing, created: false }
   const id = randomUUID()
-  await database.query(`INSERT INTO curation_sessions (id, analysis_run_id) VALUES ($1, $2)`, [id, runId])
-  const session = await getSession(database, id)
+  const inserted = await database.query<{ id: string }>(
+    `INSERT INTO curation_sessions (id, analysis_run_id) VALUES ($1, $2)
+     ON CONFLICT (analysis_run_id) DO NOTHING RETURNING id`,
+    [id, runId],
+  )
+  const session = await getSessionByRun(database, runId)
   if (!session) throw new CurationError('CURATION_SESSION_CREATE_FAILED', 'Curation session could not be created.', 500)
-  return { session, created: true }
+  return { session, created: inserted.rows.length === 1 }
 }
 
 function validatedTheme(themes: EffectiveTheme[], themeId: string) {
   const theme = themes.find((candidate) => candidate.id === themeId)
   if (!theme) throw new CurationError('CURATION_THEME_NOT_FOUND', 'Theme does not belong to this analysis run.', 404)
-  if (theme.validationStatus !== 'validated') throw new CurationError('CURATION_THEME_NOT_VALIDATED', 'Only validated themes can be curated.', 409)
+  if (!theme.evidence.length) throw new CurationError('CURATION_THEME_NOT_VALIDATED', 'Only retained feedback with source evidence can be curated.', 409)
   return theme
 }
 
@@ -454,6 +621,18 @@ function normalizeAction(actionTypeValue: unknown, payloadValue: unknown, themes
     const selected = themeIds.map((id) => validatedTheme(themes, id))
     if (selected.some((theme) => theme.status === 'consumed')) throw new CurationError('CURATION_THEME_ALREADY_CONSUMED', 'A selected theme is already consumed.', 409)
     return { actionType, payload: { themeIds, ...(optionalString(payload.name, 'name') ? { name: optionalString(payload.name, 'name') } : {}), ...(optionalString(payload.summary, 'summary') ? { summary: optionalString(payload.summary, 'summary') } : {}) } }
+  }
+
+  if (actionType === 'move_evidence') {
+    strictKeys(payload, ['fromThemeId', 'toThemeId', 'signalId'])
+    const fromThemeId = requiredString(payload.fromThemeId, 'fromThemeId')
+    const toThemeId = requiredString(payload.toThemeId, 'toThemeId')
+    if (fromThemeId === toThemeId) throw new CurationError('CURATION_ACTION_INVALID', 'Source and target buckets must differ.')
+    const source = validatedTheme(themes, fromThemeId)
+    validatedTheme(themes, toThemeId)
+    const signalId = requiredString(payload.signalId, 'signalId')
+    validateSignal(source, signalId)
+    return { actionType, payload: { fromThemeId, toThemeId, signalId } }
   }
 
   if (actionType === 'split_theme') {
@@ -501,19 +680,46 @@ export async function appendCurationAction(
   database: Database,
   sessionId: string,
   input: { actionType?: unknown; payload?: unknown },
+  actorId = 'unknown-user',
 ) {
   const session = await getSession(database, sessionId)
   if (!session) throw new CurationError('CURATION_SESSION_NOT_FOUND', 'Curation session not found.', 404)
-  if (session.status === 'ready') throw new CurationError('CURATION_SESSION_READY', 'A ready curation session is immutable.', 409)
   const projection = await getCurationProjection(database, session.analysisRunId)
-  const normalized = normalizeAction(input.actionType, input.payload, projection.machineThemes, projection)
+  let normalized: { actionType: CurationActionType; payload: Record<string, unknown> }
+  if (input.actionType === 'restore_revision') {
+    const payload = record(input.payload ?? {})
+    strictKeys(payload, ['revision'])
+    if (!Number.isInteger(payload.revision) || Number(payload.revision) < 0 || Number(payload.revision) >= session.revision) {
+      throw new CurationError('CURATION_REVISION_INVALID', 'Restore revision must identify an earlier revision.')
+    }
+    normalized = { actionType: 'restore_revision', payload: { revision: Number(payload.revision) } }
+  } else if (input.actionType === 'create_custom_theme') {
+    const payload = record(input.payload ?? {})
+    strictKeys(payload, ['name', 'summary', 'reviewIds'])
+    const reviewIds = stringArray(payload.reviewIds, 'reviewIds')
+    const available = [
+      ...projection.effectiveThemes.flatMap((theme) => theme.evidence),
+      ...await loadUnclusteredEvidence(database, session.analysisRunId),
+    ]
+    const selected = available.filter((item) => reviewIds.includes(item.reviewId))
+    if (new Set(selected.map((item) => item.reviewId)).size !== reviewIds.length) {
+      throw new CurationError('CURATION_EVIDENCE_NOT_FOUND', 'Every selected comment must be an eligible emerging signal in this analysis run.', 404)
+    }
+    normalized = { actionType: 'create_custom_theme', payload: {
+      name: requiredString(payload.name, 'name'), summary: requiredString(payload.summary, 'summary'), reviewIds,
+      signalIds: selected.map((item) => item.signalId), createdBy: actorId,
+    } }
+  } else {
+    normalized = normalizeAction(input.actionType, input.payload, projection.effectiveThemes, projection)
+    if (normalized.actionType === 'merge_themes' || normalized.actionType === 'split_theme' || normalized.actionType === 'move_evidence' || normalized.actionType === 'edit_theme') normalized.payload.createdBy = actorId
+  }
   const id = randomUUID()
   const nextRevision = session.revision + 1
   await database.transaction(async (transaction) => {
     const revision = await transaction.query<{ revision: number }>(
       `UPDATE curation_sessions SET revision = revision + 1,
-        status = CASE WHEN $3 = 'mark_ready' THEN 'ready' ELSE status END,
-        ready_at = CASE WHEN $3 = 'mark_ready' THEN NOW() ELSE ready_at END
+        status = CASE WHEN $3 = 'mark_ready' THEN 'ready' ELSE 'draft' END,
+        ready_at = CASE WHEN $3 = 'mark_ready' THEN NOW() ELSE NULL END
        WHERE id = $1 AND revision = $2 RETURNING revision`,
       [sessionId, session.revision, normalized.actionType],
     )

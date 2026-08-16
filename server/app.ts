@@ -1,6 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { getDatabase } from './db'
+import type { DemoQuotaTestControl } from './testing/demoQuotaControl'
+import { getDatabase, getDemoDatabase } from './db'
 import { createImportJob, processImportJob } from './importProcessor'
 import { decodeCursor, getReviewDetail, listReviews, summarizeReviews, type ReviewInventoryFilters } from './reviewInventory'
 import { getThemeEvidence, getVoiceMapArtifact } from './voiceMapRepository'
@@ -20,8 +21,24 @@ import {
   validateAnalysisConfiguration,
 } from './analysisRuns'
 import type { ColumnMapping } from '../src/lib/csv'
+import { CsvValidationError } from '../src/lib/csv'
 import { createReportSnapshot, getReport, listReports, ReportError } from './reports'
 import { renderReportPdf } from './pdfReports'
+import { generateOverviewBrief } from './overviewBrief'
+import {
+  buildDemoReportSnapshot,
+  appendDemoAnalysisSessionCsv,
+  createDemoAnalysisSession,
+  demoRunUsesOpenCode,
+  DemoAnalysisError,
+  getDemoAnalysisResult,
+  getDemoAnalysisSession,
+  getAnalysisCoverage,
+  DEMO_MAX_REVIEWS,
+  DEMO_COMMENT_ALLOWANCE,
+  DEMO_MAX_CURATION_ACTIONS,
+  publicDemoCurationProjection,
+} from './demoAnalysis'
 import {
   contextFromOAuthState,
   DatabaseOAuthStateStore,
@@ -46,8 +63,13 @@ import {
   bindProjectToOrganization,
   createIdentity,
   createSession,
+  configuredSupabaseClaimsVerifier,
   revokeSession,
+  type VerifyAuthClaims,
 } from './auth'
+import { isWaitlistAdmin, listWaitlistSignups } from './waitlistAdmin'
+import { AdmissionError, withOrganizationJobAdmission } from './admission'
+import { collectLocalPerformanceDiagnostics, sanitizePerformanceDiagnostics } from './performanceDiagnostics'
 
 function json(response: ServerResponse, status: number, payload: unknown) {
   response.writeHead(status, {
@@ -65,6 +87,7 @@ function sessionCookie(token: string, maxAge: number) {
 }
 
 function stagingAccessConfiguration() {
+  if (process.env.NODE_ENV === 'production') return null
   if (process.env.GARAXE_DEPLOYMENT_TIER !== 'staging' || process.env.GARAXE_STAGING_AUTH_ENABLED !== 'true') return null
   const email = process.env.GARAXE_STAGING_OWNER_EMAIL?.trim().toLowerCase()
   const accessKey = process.env.GARAXE_STAGING_ACCESS_KEY || ''
@@ -76,6 +99,19 @@ function secretMatches(candidate: string, expected: string) {
   const candidateDigest = createHash('sha256').update(candidate).digest()
   const expectedDigest = createHash('sha256').update(expected).digest()
   return timingSafeEqual(candidateDigest, expectedDigest)
+}
+
+export function demoClientKey(request: Pick<IncomingMessage, 'headers' | 'socket'>, environment: NodeJS.ProcessEnv = process.env) {
+  const trustedProxy = environment.GARAXE_TRUST_PROXY === 'true'
+  const header = (name: string) => {
+    const value = request.headers[name]
+    return Array.isArray(value) ? value[0] : value
+  }
+  const forwarded = trustedProxy
+    ? header('cf-connecting-ip') || header('x-forwarded-for')?.split(',')[0]?.trim()
+    : undefined
+  const address = forwarded || request.socket.remoteAddress || 'unidentified-client'
+  return createHash('sha256').update(address).digest('hex')
 }
 
 function googleOAuthClient(database: Awaited<ReturnType<typeof getDatabase>>) {
@@ -155,15 +191,155 @@ function inventoryFilters(url: URL): ReviewInventoryFilters {
   }
 }
 
-export async function handleRequest(request: IncomingMessage, response: ServerResponse) {
+export async function handleRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  dependencies: { verifyClaims?: VerifyAuthClaims; demoQuotaControl?: DemoQuotaTestControl; performanceDiagnostics?: () => Promise<unknown> } = {},
+) {
   const url = new URL(request.url || '/', 'http://localhost')
+  const demoQuotaControl = process.env.NODE_ENV === 'production' ? undefined : dependencies.demoQuotaControl
+  const demoNow = () => demoQuotaControl?.now() ?? new Date()
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/live') {
       return json(response, 200, { status: 'alive' })
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/_test/demo-quota-clock') {
+      const suppliedToken = String(request.headers['x-voice-lab-test-control'] || '')
+      if (!demoQuotaControl || !secretMatches(suppliedToken, demoQuotaControl.token)) {
+        return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
+      }
+      const input = await body(request)
+      const advanceMs = Number(input.advanceMs)
+      if (!Number.isSafeInteger(advanceMs) || advanceMs < 1 || advanceMs > 24 * 60 * 60 * 1_000) {
+        return json(response, 400, { error: { code: 'TEST_CLOCK_INVALID', message: 'Advance must be between one millisecond and 24 hours.' } })
+      }
+      return json(response, 200, { data: { now: demoQuotaControl.advance(advanceMs).toISOString() } })
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/_test/performance-diagnostics') {
+      const address = request.socket.remoteAddress || ''
+      const loopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+      if (process.env.NODE_ENV === 'production' || process.env.GARAXE_LOCAL_PERFORMANCE_DIAGNOSTICS !== 'true' || !loopback) {
+        return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
+      }
+      const database = await getDatabase()
+      const diagnostics = dependencies.performanceDiagnostics
+        ? await dependencies.performanceDiagnostics()
+        : await collectLocalPerformanceDiagnostics([
+          { database, lane: 'authenticated' },
+          { database: await getDemoDatabase(), lane: 'demo' },
+        ])
+      return json(response, 200, { data: sanitizePerformanceDiagnostics(diagnostics) })
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/demo/analysis-runs') {
+      const database = await getDemoDatabase()
+      const input = await body(request)
+      const now = demoNow()
+      const session = await createDemoAnalysisSession(database, { fileName: input.fileName, rawCsv: input.rawCsv, mapping: input.mapping, clientKey: demoClientKey(request) }, process.env, now)
+      setImmediate(() => void processAnalysisRun(database, session.analysisRunId))
+      const status = await getDemoAnalysisSession(database, session.token, now)
+      return json(response, 202, { data: {
+        token: session.token, status: 'queued', stage: 'queued', demo: true,
+        createdAt: session.createdAt, expiresAt: session.expiresAt, retentionHours: 24,
+        maxRecords: DEMO_MAX_REVIEWS, allowance: DEMO_COMMENT_ALLOWANCE, addedRecords: session.addedRecords,
+        duplicateRecords: session.duplicateRecords, notImportedRecords: session.notImportedRecords, quota: status?.quota,
+      } })
+    }
+
+    const demoImportMatch = url.pathname.match(/^\/api\/demo\/analysis-runs\/([A-Za-z0-9_-]{43})\/imports$/)
+    if (request.method === 'POST' && demoImportMatch) {
+      const database = await getDemoDatabase()
+      const input = await body(request)
+      const result = await appendDemoAnalysisSessionCsv(database, demoImportMatch[1], input, process.env, demoNow())
+      if (result.addedRecords > 0) setImmediate(() => void processAnalysisRun(database, result.analysisRunId))
+      return json(response, result.addedRecords > 0 ? 202 : 200, { data: {
+        token: demoImportMatch[1], status: result.addedRecords > 0 ? 'queued' : 'completed',
+        stage: result.addedRecords > 0 ? 'queued' : 'completed', demo: true,
+        addedRecords: result.addedRecords, duplicateRecords: result.duplicateRecords,
+        notImportedRecords: result.notImportedRecords, expiresAt: result.expiresAt, quota: result.quota,
+      } })
+    }
+
+    const demoRunMatch = url.pathname.match(/^\/api\/demo\/analysis-runs\/([A-Za-z0-9_-]{43})$/)
+    if (request.method === 'GET' && demoRunMatch) {
+      const database = await getDemoDatabase()
+      const session = await getDemoAnalysisSession(database, demoRunMatch[1], demoNow())
+      if (!session) return json(response, 404, { error: { code: 'DEMO_SESSION_NOT_FOUND', message: 'The demo session was not found or has expired.' } })
+      if (session.status === 'failed') return json(response, 200, { data: {
+        status: 'failed', stage: 'failed', demo: true, expiresAt: session.expiresAt,
+        quota: session.quota,
+        message: 'The live demo analysis did not complete. No persistent report was created.',
+      } })
+      if (session.status === 'completed') {
+        if (!demoRunUsesOpenCode(session)) return json(response, 200, { data: {
+          status: 'failed', stage: 'failed', demo: true, expiresAt: session.expiresAt,
+          quota: session.quota,
+          message: 'The analysis engine did not complete interpretation. No demo report is available.',
+        } })
+        const result = await getDemoAnalysisResult(database, session)
+        if (!result) throw new DemoAnalysisError('DEMO_RESULT_NOT_READY', 'The demo result is not ready.', 409)
+        return json(response, 200, { data: {
+          status: 'completed', stage: 'completed', demo: true, expiresAt: session.expiresAt,
+          quota: session.quota,
+          engine: result.engine, themes: result.themes, coverage: result.coverage,
+          pdfUrl: `/api/demo/analysis-runs/${demoRunMatch[1]}/pdf`,
+        } })
+      }
+      return json(response, 200, { data: {
+        status: session.status, stage: session.stage, demo: true, expiresAt: session.expiresAt,
+        quota: session.quota,
+      } })
+    }
+
+    const demoPdfMatch = url.pathname.match(/^\/api\/demo\/analysis-runs\/([A-Za-z0-9_-]{43})\/pdf$/)
+    if (request.method === 'GET' && demoPdfMatch) {
+      const database = await getDemoDatabase()
+      const session = await getDemoAnalysisSession(database, demoPdfMatch[1])
+      if (!session) return json(response, 404, { error: { code: 'DEMO_SESSION_NOT_FOUND', message: 'The demo session was not found or has expired.' } })
+      const pdf = await renderReportPdf(await buildDemoReportSnapshot(database, session))
+      response.writeHead(200, {
+        'content-type': 'application/pdf',
+        'content-disposition': 'attachment; filename="voice-map-demo-report.pdf"',
+        'content-length': String(pdf.length),
+        'cache-control': 'private, no-store, max-age=0',
+        expires: '0',
+        pragma: 'no-cache',
+        'x-content-type-options': 'nosniff',
+      })
+      response.end(pdf)
+      return
+    }
+
+    const demoOverviewMatch = url.pathname.match(/^\/api\/demo\/analysis-runs\/([A-Za-z0-9_-]{43})\/overview$/)
+    if (request.method === 'GET' && demoOverviewMatch) {
+      const database = await getDemoDatabase()
+      const session = await getDemoAnalysisSession(database, demoOverviewMatch[1])
+      if (!session) return json(response, 404, { error: { code: 'DEMO_SESSION_NOT_FOUND', message: 'The demo session was not found or has expired.' } })
+      if (session.status !== 'completed' || !demoRunUsesOpenCode(session)) throw new DemoAnalysisError('DEMO_RESULT_NOT_READY', 'The demo result is not ready.', 409)
+      const projection = await getCurationProjection(database, session.analysisRunId)
+      return json(response, 200, { data: await generateOverviewBrief(projection.effectiveThemes) })
+    }
+
+    const demoCurationMatch = url.pathname.match(/^\/api\/demo\/analysis-runs\/([A-Za-z0-9_-]{43})\/curation$/)
+    if (demoCurationMatch && (request.method === 'GET' || request.method === 'POST')) {
+      const database = await getDemoDatabase()
+      const session = await getDemoAnalysisSession(database, demoCurationMatch[1])
+      if (!session) return json(response, 404, { error: { code: 'DEMO_SESSION_NOT_FOUND', message: 'The demo session was not found or has expired.' } })
+      if (session.status !== 'completed' || !demoRunUsesOpenCode(session)) throw new DemoAnalysisError('DEMO_RESULT_NOT_READY', 'The demo result is not ready.', 409)
+      const { session: curation } = await createCurationSession(database, session.analysisRunId)
+      if (request.method === 'GET') return json(response, 200, { data: publicDemoCurationProjection(await getCurationProjection(database, session.analysisRunId)) })
+      const actionCount = await database.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM curation_actions WHERE curation_session_id = $1', [curation.id])
+      if ((actionCount.rows[0]?.count || 0) >= DEMO_MAX_CURATION_ACTIONS) throw new DemoAnalysisError('DEMO_CURATION_LIMIT_REACHED', 'This temporary demo has reached its curation change limit.', 429)
+      const input = await body(request)
+      const result = await appendCurationAction(database, curation.id, { actionType: input.actionType, payload: input.payload }, `demo:${session.id}`)
+      return json(response, 201, { data: { ...result, projection: publicDemoCurationProjection(result.projection) } })
+    }
+
     let database = await getDatabase()
+    const supabaseClaimsVerifier = dependencies.verifyClaims || configuredSupabaseClaimsVerifier()
     const mutating = request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS'
     const cookieAuthenticated = request.headers.cookie?.includes('garaxe_session=')
     const allowedOrigin = process.env.GARAXE_ALLOWED_ORIGIN
@@ -178,12 +354,31 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     if (request.method === 'GET' && url.pathname === '/api/auth/status') {
       const users = await database.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM auth_users')
       return json(response, 200, { data: {
-        needsBootstrap: Number(users.rows[0]?.count || 0) === 0,
-        stagingAccessEnabled: Boolean(stagingAccessConfiguration()),
+        needsBootstrap: !supabaseClaimsVerifier && process.env.GARAXE_ADMIN_BOOTSTRAP_ENABLED === 'true' && Number(users.rows[0]?.count || 0) === 0,
+        stagingAccessEnabled: !supabaseClaimsVerifier && Boolean(stagingAccessConfiguration()),
       } })
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/waitlist') {
+      const input = await body(request)
+      const name = String(input.name || '').trim().replace(/\s+/g, ' ')
+      const email = String(input.email || '').trim().toLowerCase()
+      const consentVersion = String(input.consentVersion || '')
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      if (!name || name.length > 120 || email.length > 254 || !emailValid || consentVersion !== 'voice-lab-waitlist-v1') {
+        return json(response, 400, { error: { code: 'WAITLIST_SUBMISSION_INVALID', message: 'Enter a valid name, email, and consent.' } })
+      }
+      await database.query(
+        `INSERT INTO waitlist_signups (id, name, email_normalized, consent_version)
+         VALUES ($1, $2, $3, $4) ON CONFLICT (email_normalized) DO NOTHING`,
+        [randomUUID(), name, email, consentVersion],
+      )
+      return json(response, 200, { data: { status: 'recorded' } })
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/auth/bootstrap') {
+      if (supabaseClaimsVerifier) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
+      if (process.env.GARAXE_ADMIN_BOOTSTRAP_ENABLED !== 'true') return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
       const users = await database.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM auth_users')
       if (Number(users.rows[0]?.count || 0) !== 0) {
         return json(response, 409, { error: { code: 'BOOTSTRAP_CLOSED', message: 'Initial owner setup is already complete.' } })
@@ -206,6 +401,7 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/local-session') {
+      if (supabaseClaimsVerifier) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
       const address = request.socket.remoteAddress || ''
       const loopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
       if (process.env.NODE_ENV === 'production' || !loopback) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
@@ -219,6 +415,7 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/staging-session') {
+      if (supabaseClaimsVerifier) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
       const configuration = stagingAccessConfiguration()
       if (!configuration) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
       const input = await body(request)
@@ -234,11 +431,22 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       return json(response, 201, { data: { expiresAt: session.expiresAt } })
     }
 
-    const auth = await authenticateRequest(database, request)
+    const auth = await authenticateRequest(database, request, supabaseClaimsVerifier)
     database = withDatabaseUser(database, auth.user.id)
 
     if (request.method === 'GET' && url.pathname === '/api/auth/me') {
-      return json(response, 200, { data: auth })
+      return json(response, 200, { data: {
+        sessionId: auth.sessionId,
+        user: auth.user,
+        memberships: auth.memberships,
+        capabilities: { waitlistMonitoring: isWaitlistAdmin(auth) },
+      } })
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/waitlist') {
+      const limit = Number(url.searchParams.get('limit') || 25)
+      const offset = Number(url.searchParams.get('offset') || 0)
+      return json(response, 200, { data: await listWaitlistSignups(database, auth, process.env, { limit, offset }) })
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
@@ -347,13 +555,6 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       const name = String(input.name || '').trim()
       const primaryDecision = String(input.primaryDecision || 'explore').trim()
       if (!name) return json(response, 400, { error: { code: 'PROJECT_NAME_REQUIRED', message: 'Project name is required.' } })
-      if (input.bootstrap === true) {
-        const existing = await database.query<{ id: string; name: string; primaryDecision: string }>(
-          `SELECT id, name, primary_decision AS "primaryDecision" FROM projects WHERE name = $1 ORDER BY created_at DESC LIMIT 1`,
-          [name],
-        )
-        if (existing.rows[0]) return json(response, 200, { data: existing.rows[0] })
-      }
       const id = randomUUID()
       const organizationId = String(input.organizationId || auth.memberships[0]?.organizationId || '')
       const membership = auth.memberships.find((item) => item.organizationId === organizationId)
@@ -422,9 +623,17 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       const input = await body(request)
       const projectId = String(input.projectId || '')
       if (!projectId) return json(response, 400, { error: { code: 'ANALYSIS_REQUEST_INVALID', message: 'Project is required.' } })
-      await authorizeProject(database, auth, projectId, ['owner', 'admin', 'analyst'])
+      const authorization = await authorizeProject(database, auth, projectId, ['owner', 'admin', 'analyst'])
       const configuration = validateAnalysisConfiguration(input.configuration)
-      const run = await createAnalysisRun(database, projectId, configuration)
+      const run = await withOrganizationJobAdmission(database, authorization.organizationId, async (transaction) => {
+        const active = await transaction.query(
+          `SELECT 1 FROM analysis_runs WHERE project_id = $1
+           AND status IN ('queued','assembling_dataset','preprocessing','interpreting_clusters') LIMIT 1`,
+          [projectId],
+        )
+        if (active.rows.length) throw new AdmissionError('PROJECT_ANALYSIS_ACTIVE', 'Wait for the current project analysis to finish before starting another.', 409)
+        return createAnalysisRun(transaction, projectId, configuration)
+      })
       setImmediate(() => void processAnalysisRun(database, run.id))
       return json(response, 202, { data: run })
     }
@@ -456,6 +665,12 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       return json(response, 200, { data: reviews })
     }
 
+    const analysisRunCoverageMatch = url.pathname.match(/^\/api\/analysis-runs\/([0-9a-f-]+)\/coverage$/)
+    if (request.method === 'GET' && analysisRunCoverageMatch) {
+      await authorizeAnalysisRun(database, auth, analysisRunCoverageMatch[1])
+      return json(response, 200, { data: await getAnalysisCoverage(database, analysisRunCoverageMatch[1]) })
+    }
+
     const analysisVoiceMapMatch = url.pathname.match(/^\/api\/analysis-runs\/([0-9a-f-]+)\/voice-map$/)
     if (request.method === 'GET' && analysisVoiceMapMatch) {
       await authorizeAnalysisRun(database, auth, analysisVoiceMapMatch[1])
@@ -464,6 +679,16 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       const artifact = await getVoiceMapArtifact(database, analysisVoiceMapMatch[1])
       if (!artifact) return json(response, 409, { error: { code: 'VOICE_MAP_NOT_READY', message: 'Voice Map is not ready for this run.' } })
       return json(response, 200, { data: { run, ...artifact } })
+    }
+
+    const analysisOverviewMatch = url.pathname.match(/^\/api\/analysis-runs\/([0-9a-f-]+)\/overview$/)
+    if (request.method === 'GET' && analysisOverviewMatch) {
+      await authorizeAnalysisRun(database, auth, analysisOverviewMatch[1])
+      const run = await getAnalysisRun(database, analysisOverviewMatch[1])
+      if (!run) return json(response, 404, { error: { code: 'ANALYSIS_RUN_NOT_FOUND', message: 'Analysis run not found.' } })
+      if (run.status !== 'completed') return json(response, 409, { error: { code: 'OVERVIEW_NOT_READY', message: 'Analysis must complete before the Overview is available.' } })
+      const projection = await getCurationProjection(database, analysisOverviewMatch[1])
+      return json(response, 200, { data: await generateOverviewBrief(projection.effectiveThemes) })
     }
 
     const analysisCurationSessionsMatch = url.pathname.match(/^\/api\/analysis-runs\/([0-9a-f-]+)\/curation-sessions$/)
@@ -505,7 +730,7 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       const result = await appendCurationAction(database, curationActionsMatch[1], {
         actionType: input.actionType,
         payload: input.payload,
-      })
+      }, auth.user.id)
       return json(response, 201, { data: result })
     }
 
@@ -538,15 +763,17 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       if (!projectId || !fileName || !rawCsv || !mapping || (originalSource && (!['utf8', 'base64'].includes(String(originalSource.encoding)) || typeof originalSource.content !== 'string' || typeof originalSource.mediaType !== 'string'))) {
         return json(response, 400, { error: { code: 'IMPORT_REQUEST_INVALID', message: 'Project, file, CSV data, and mapping are required.' } })
       }
-      await authorizeProject(database, auth, projectId, ['owner', 'admin', 'analyst'])
+      const authorization = await authorizeProject(database, auth, projectId, ['owner', 'admin', 'analyst'])
 
       const importRequest = {
         projectId, fileName, rawCsv, mapping,
+        allowLoopbackHttp: process.env.NODE_ENV !== 'production' && process.env.GARAXE_ALLOW_LOCAL_HTTP_SOURCE_URLS === 'true',
         originalSource: originalSource
           ? originalSource as { encoding: 'utf8' | 'base64'; content: string; mediaType: string }
           : { encoding: 'utf8' as const, content: rawCsv, mediaType: 'text/csv' },
       }
-      const { jobId, rows } = await createImportJob(database, importRequest)
+      const { jobId, rows } = await withOrganizationJobAdmission(database, authorization.organizationId,
+        (transaction) => createImportJob(transaction, importRequest))
       setImmediate(() => void processImportJob(database, jobId, importRequest, rows).catch((error) => {
         console.error('Import job failed.', { jobId, error: error instanceof Error ? error.name : 'UnknownError' })
       }))
@@ -618,11 +845,23 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     if (error instanceof AuthError) {
       return json(response, error.status, { error: { code: error.code, message: error.message } })
     }
+    if (error instanceof AdmissionError) {
+      return json(response, error.status, { error: { code: error.code, message: error.message } })
+    }
     if (error instanceof ReportError) {
+      return json(response, error.status, { error: { code: error.code, message: error.message } })
+    }
+    if (error instanceof DemoAnalysisError) {
       return json(response, error.status, { error: { code: error.code, message: error.message } })
     }
     if (error instanceof CurationError) {
       return json(response, error.status, { error: { code: error.code, message: error.message } })
+    }
+    if (error instanceof CsvValidationError) {
+      return json(response, 400, { error: { code: 'IMPORT_CONTENT_INVALID', message: error.message } })
+    }
+    if (error instanceof SyntaxError) {
+      return json(response, 400, { error: { code: 'REQUEST_BODY_INVALID', message: 'The request body must be valid JSON.' } })
     }
     if (error instanceof Error && (error.message === 'INVALID_CURSOR' || error.message === 'INVALID_FILTER')) {
       return json(response, 400, { error: { code: 'REVIEW_QUERY_INVALID', message: 'Review query parameters are invalid.' } })

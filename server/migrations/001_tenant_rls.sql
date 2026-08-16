@@ -146,6 +146,11 @@ CREATE POLICY tenant_isolation ON public.curation_sessions FOR ALL
   USING (public.app_can_access_run(analysis_run_id)) WITH CHECK (public.app_can_access_run(analysis_run_id));
 
 ALTER TABLE public.curation_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.curation_actions DROP CONSTRAINT IF EXISTS curation_actions_action_type_check;
+ALTER TABLE public.curation_actions ADD CONSTRAINT curation_actions_action_type_check CHECK (action_type IN (
+  'approve_theme', 'reject_theme', 'edit_theme', 'pin_evidence', 'exclude_evidence',
+  'merge_themes', 'split_theme', 'create_custom_theme', 'move_evidence', 'restore_revision', 'mark_ready'
+));
 ALTER TABLE public.curation_actions FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON public.curation_actions;
 CREATE POLICY tenant_isolation ON public.curation_actions FOR ALL

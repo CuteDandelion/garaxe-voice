@@ -111,6 +111,27 @@ describe('DurableLlmQueue', () => {
     expect((await database.query(`SELECT id FROM llm_budget_ledger`)).rows).toHaveLength(0)
   })
 
+  it('treats PostgreSQL bigint zero as an unmetered reservation', async () => {
+    await database.query(`DELETE FROM llm_budget_accounts`)
+    const postgresLike = {
+      ...database,
+      transaction: <Result>(work: Parameters<Database['transaction']>[0]) => database.transaction((client) => work({
+        ...client,
+        query: async <Row = Record<string, unknown>>(sql: string, parameters: unknown[] = []) => {
+          const result = await client.query<Row>(sql, parameters)
+          return { ...result, rows: result.rows.map((row) => 'reservedMicro' in (row as object)
+            ? { ...row, reservedMicro: String((row as { reservedMicro: unknown }).reservedMicro) }
+            : row) }
+        },
+      })) as Promise<Result>,
+    } as Database
+    const postgresQueue = new DurableLlmQueue(postgresLike)
+    const created = await postgresQueue.enqueue({ ...job(), reservationMicro: 0 })
+
+    expect(await postgresQueue.cancel(created.id)).toBe(true)
+    expect((await database.query(`SELECT id FROM llm_budget_ledger`)).rows).toHaveLength(0)
+  })
+
   it('rejects a cross-tenant run and holds work when any hierarchical budget cannot reserve', async () => {
     await expect(queue.enqueue({ ...job(), organizationId: randomUUID() })).rejects.toThrow('LLM_TENANT_RUN_MISMATCH')
     await queue.configureBudget('run', runId, 500)
@@ -202,6 +223,41 @@ describe('DurableLlmQueue', () => {
        WHERE provider='opencode-go' AND model='economy'`,
     )
     expect(unchanged.rows[0]).toEqual({ requests: 9, tokens: 9_700 })
+  })
+
+  it('wakes concurrency waiters when an in-flight job releases capacity', async () => {
+    await queue.configureConcurrencyLimit({ scopeType: 'global', maxInFlight: 1 })
+    await queue.configureConcurrencyLimit({
+      scopeType: 'provider_model', provider: 'opencode-go', model: 'economy', maxInFlight: 1,
+    })
+    const first = await queue.enqueue(job())
+    const second = await queue.enqueue({ ...job(), inputDigest: 'e'.repeat(64) })
+    const now = at()
+    const lease = await queue.leaseNext({ provider: 'opencode-go', model: 'economy', workerId: 'worker-a', leaseMs: 60_000, now })
+    expect(lease?.id).toBe(first.id)
+    expect(await queue.leaseNext({ provider: 'opencode-go', model: 'economy', workerId: 'worker-b', leaseMs: 10_000, now })).toBeNull()
+    const parked = await database.query<{ availableAt: string }>(
+      `SELECT available_at AS "availableAt" FROM llm_jobs WHERE id=$1`, [second.id],
+    )
+    expect(new Date(parked.rows[0].availableAt).getTime()).toBe(at(60_000).getTime())
+
+    const releasedAt = at(10_000)
+    expect(await queue.complete(first.id, lease!.leaseToken, {
+      result: { ok: true }, inputTokens: 0, outputTokens: 0, actualMicro: 0, usageVerified: true, now: releasedAt,
+    })).toBe(true)
+    const awakened = await database.query<{ availableAt: string }>(
+      `SELECT available_at AS "availableAt" FROM llm_jobs WHERE id=$1`, [second.id],
+    )
+    expect(new Date(awakened.rows[0].availableAt).getTime()).toBe(releasedAt.getTime())
+    expect((await queue.leaseNext({
+      provider: 'opencode-go', model: 'economy', workerId: 'worker-b', leaseMs: 60_000, now: releasedAt,
+    }))?.id).toBe(second.id)
+    expect(await queue.complete(first.id, lease!.leaseToken, {
+      result: { duplicated: true }, inputTokens: 0, outputTokens: 0, actualMicro: 0, usageVerified: true, now: releasedAt,
+    })).toBe(false)
+    expect((await database.query(
+      `SELECT id FROM llm_attempts WHERE job_id=$1 AND outcome='succeeded'`, [first.id],
+    )).rows).toHaveLength(1)
   })
 
   it('skips a saturated organization fairly and leases another organization in the same transaction', async () => {

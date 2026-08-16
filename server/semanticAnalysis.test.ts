@@ -21,6 +21,14 @@ describe('semantic analysis pipeline', () => {
     for (const segment of segments) expect(text.slice(segment.start, segment.end)).toBe(segment.text)
   })
 
+  it('keeps UTF-16 source offsets exact after non-BMP feedback characters', () => {
+    const text = 'The delivery bag leaked curry across the doorstep 😞 and nobody answered the phone. The container lid had opened.'
+    const segments = segmentReviews([{ reviewId: 'food-unicode', text }])
+
+    expect(segments[1]).toMatchObject({ text: 'The container lid had opened.', start: 84, end: 113 })
+    expect(text.slice(84, 113)).toBe('The container lid had opened.')
+  })
+
   it('derives clusters and literal representations from the dataset without a fixed industry vocabulary', async () => {
     const reviews = [
       { reviewId: 'food-1', text: 'The tamarind broth tasted bright and balanced.', rating: 5, language: 'en' },

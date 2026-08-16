@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildClusterInterpretationMessages,
+  aspectIdentityGroupAssignments,
   buildPairAdjudicationMessages,
   categoryFirstGroupPlan,
   categoryFirstGroupAssignments,
@@ -9,6 +10,8 @@ import {
   clusterInterpretationPolicyFromEnv,
   clusterInterpretationThemeBatches,
   emergingSignalInterpretationBatches,
+  emergingSignalRecoveryBatches,
+  interpretationOccurrences,
   dominantActionableCategory,
   recurrenceSummary,
   splitEmergingSignalInterpretationBatch,
@@ -17,6 +20,7 @@ import {
   validateClusterInterpretations,
   validatePairAdjudications,
 } from './clusterInterpretation'
+import { segmentReviews } from './semanticAnalysis'
 
 const originalText = 'Nobody answered the phone, so the curry was left at the doorstep and the bag leaked.'
 const reference = (quoteText: string) => ({
@@ -53,6 +57,15 @@ describe('cluster interpretation', () => {
   it('versions the five-category semantic contract independently from prior persisted jobs', () => {
     expect(CLUSTER_INTERPRETATION_SCHEMA_VERSION).toBe('cluster-interpretation-v9')
     expect(CLUSTER_INTERPRETATION_PROMPT_VERSION).toBe('semantic-taxonomy-v2-v22')
+  })
+
+  it('groups aspect semantics only by exact canonical identity and preserves sibling aspects', () => {
+    const signals = [
+      { signalId: 'signal-a', reviewId: 'review-1', topicIdentity: 'pain:checkout delay' },
+      { signalId: 'signal-b', reviewId: 'review-1', topicIdentity: 'desired outcome:faster checkout' },
+      { signalId: 'signal-c', reviewId: 'review-2', topicIdentity: 'pain:checkout delay' },
+    ]
+    expect(aspectIdentityGroupAssignments(signals)).toEqual([[0, 2], [1]])
   })
   it('accepts a root-cause-first candidate only when all evidence spans resolve exactly', () => {
     expect(validateClusterInterpretations(work, validCandidate)).toMatchObject({
@@ -487,6 +500,10 @@ describe('cluster interpretation', () => {
   it('uses measured five-comment batches and splits only an incomplete batch', () => {
     const themes: ClusterWork['themes'] = Array.from({ length: 11 }, (_, index) => ({
       ...work.themes[0], themeId: `signal-${index + 1}`,
+      evidence: [{
+        reviewId: `review-${index + 1}`, originalText: `Distinct feedback ${index + 1}`,
+        quoteText: `Distinct feedback ${index + 1}`, quoteStart: 0, quoteEnd: `Distinct feedback ${index + 1}`.length,
+      }],
     }))
     expect(emergingSignalInterpretationBatches({ themes }).map((batch) => batch.themes.length)).toEqual([5, 5, 1])
     expect(splitEmergingSignalInterpretationBatch(themes.slice(0, 5).map((theme) => theme.themeId)).map((batch) => batch.length)).toEqual([2, 3])
@@ -502,6 +519,121 @@ describe('cluster interpretation', () => {
     expect(prompt).toContain('Choose desired_outcome for any other wanted or achieved result')
     expect(prompt).toContain('Generic or affective praise is emotion with positive sentiment')
     expect(prompt).not.toContain('Choose feature_request')
+  })
+
+  it('interprets text-identical aspects once within a review and retains every occurrence', () => {
+    const sentence = 'The tasting menu had clear pacing and careful temperature control.'
+    const repeated = Array.from({ length: 18 }, (_, index) => ({
+      themeId: `signal-${index + 1}`, currentLabel: 'Individual feedback signal', currentType: 'praise', rootCauseRatio: 0,
+      evidence: [{
+        reviewId: 'food-098', originalText: sentence.repeat(18), quoteText: sentence,
+        quoteStart: index * sentence.length, quoteEnd: (index + 1) * sentence.length,
+      }],
+    }))
+
+    const batches = emergingSignalInterpretationBatches({ themes: repeated })
+
+    expect(batches).toHaveLength(1)
+    expect(batches[0].themes).toHaveLength(1)
+    expect(batches[0].themes[0]).toMatchObject({
+      themeId: 'signal-1',
+      occurrences: expect.arrayContaining([
+        { signalId: 'signal-1', evidence: expect.objectContaining({ quoteStart: 0, quoteEnd: 66 }) },
+        { signalId: 'signal-18', evidence: expect.objectContaining({ quoteStart: 1122, quoteEnd: 1188 }) },
+      ]),
+    })
+    expect((batches[0].themes[0] as { occurrences: unknown[] }).occurrences).toHaveLength(18)
+  })
+
+  it('segments, validates, and fans out punctuation-adjacent duplicate aspects without guessing spans', () => {
+    const sentence = 'The tasting menu had clear pacing and careful temperature control.'
+    const originalText = sentence.repeat(18)
+    const segments = segmentReviews([{ reviewId: 'food-098', text: originalText }])
+    const batches = emergingSignalInterpretationBatches({
+      themes: segments.map((segment) => ({
+        themeId: segment.id,
+        currentLabel: 'Individual feedback signal',
+        currentType: 'praise',
+        rootCauseRatio: 0,
+        evidence: [{
+          reviewId: segment.reviewId,
+          originalText,
+          quoteText: segment.text,
+          quoteStart: segment.start,
+          quoteEnd: segment.end,
+        }],
+      })),
+    })
+
+    expect(segments).toHaveLength(18)
+    expect(segments[0]).toMatchObject({ id: 'food-098:segment:1', start: 0, end: 66 })
+    expect(segments[17]).toMatchObject({ id: 'food-098:segment:18', start: 1122, end: 1188 })
+    expect(batches).toHaveLength(1)
+    expect(batches[0].themes).toHaveLength(1)
+
+    expect(validateClusterInterpretations({ themes: [{
+      ...batches[0].themes[0],
+      evidence: [{ reviewId: 'food-098', originalText, quoteText: originalText, quoteStart: 0, quoteEnd: originalText.length }],
+      occurrences: undefined,
+    }] }, {
+      schemaVersion: CLUSTER_INTERPRETATION_SCHEMA_VERSION,
+      interpretations: [{
+        themeId: 'food-098:segment:1', label: 'Tasting menu pacing', aspect: 'tasting menu pacing',
+        signalTypes: ['desired_outcome'], sentiment: 'positive',
+        evidence: [{ reviewId: 'food-098', quoteText: sentence }],
+      }],
+    }, { mode: 'per_comment' })).toMatchObject({ accepted: [], rejected: [{ reason: 'invalid_evidence_span' }] })
+
+    const validation = validateClusterInterpretations(batches[0], {
+      schemaVersion: CLUSTER_INTERPRETATION_SCHEMA_VERSION,
+      interpretations: [{
+        themeId: 'food-098:segment:1',
+        label: 'Tasting menu pacing',
+        aspect: 'tasting menu pacing',
+        signalTypes: ['desired_outcome'],
+        sentiment: 'positive',
+        evidence: [{ reviewId: 'food-098', quoteText: sentence }],
+      }],
+    }, { mode: 'per_comment' })
+
+    expect(validation).toMatchObject({
+      accepted: [{ evidence: [{ quoteStart: 0, quoteEnd: 66 }] }],
+      rejected: [],
+    })
+    expect(interpretationOccurrences(batches[0], validation.accepted[0]).map((occurrence) => ({
+      signalId: occurrence.signalId,
+      quoteStart: occurrence.evidence.quoteStart,
+      quoteEnd: occurrence.evidence.quoteEnd,
+    }))).toEqual(segments.map((segment) => ({
+      signalId: segment.id,
+      quoteStart: segment.start,
+      quoteEnd: segment.end,
+    })))
+  })
+
+  it('keeps text-identical occurrence groups intact when recovery splits failed work', () => {
+    const sentence = 'The tasting menu had clear pacing and careful temperature control.'
+    const repeated = Array.from({ length: 18 }, (_, index) => ({
+      themeId: `repeat-${index + 1}`, currentLabel: 'Individual feedback signal', currentType: 'praise', rootCauseRatio: 0,
+      evidence: [{
+        reviewId: 'food-098', originalText: sentence.repeat(18), quoteText: sentence,
+        quoteStart: index * sentence.length, quoteEnd: (index + 1) * sentence.length,
+      }],
+    }))
+    const distinct = Array.from({ length: 4 }, (_, index) => ({
+      themeId: `distinct-${index + 1}`, currentLabel: 'Individual feedback signal', currentType: 'pain', rootCauseRatio: 0,
+      evidence: [{
+        reviewId: `food-${index + 1}`, originalText: `Distinct issue ${index + 1}`, quoteText: `Distinct issue ${index + 1}`,
+        quoteStart: 0, quoteEnd: `Distinct issue ${index + 1}`.length,
+      }],
+    }))
+
+    const batches = emergingSignalRecoveryBatches({ themes: [...repeated, ...distinct] })
+
+    expect(batches.map((batch) => batch.themes.length)).toEqual([2, 3])
+    expect(batches.flatMap((batch) => batch.themes)
+      .find((theme) => theme.themeId === 'repeat-1')?.occurrences).toHaveLength(18)
+    expect(batches.flatMap((batch) => batch.themes).some((theme) => theme.themeId === 'repeat-2')).toBe(false)
   })
 
   it('asks the semantic interpreter to prioritize explicit feelings over a triggering current failure', () => {

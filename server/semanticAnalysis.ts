@@ -116,7 +116,7 @@ export const DETERMINISTIC_TEST_CLUSTERING_OPTIONS: Partial<SemanticClusteringOp
   ambiguityMargin: 0.05,
 }
 
-const clauseBoundary = /(?<=[.!?;:\n])\s+|\s+(?=(?:but|however|although|yet|while)\b)/giu
+const clauseBoundary = /(?<=[.!?;:\n])(?:\s+|(?=\p{Lu}))|\s+(?=(?:but|however|although|yet|while)\b)/giu
 const termsPattern = /[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}'’-]*/gu
 const representationStopWords = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'but', 'by', 'for', 'from', 'had', 'has', 'have', 'i', 'in', 'is', 'it',

@@ -1,12 +1,19 @@
 import { createHash } from 'node:crypto'
-import type { Database } from './database'
+import type { Database, DatabaseClient } from './database'
 import type { LeasedLlmJob } from './llmQueue'
 import { DurableLlmQueue } from './llmQueue'
 import { LlmWorkerRuntime } from './llmWorker'
 import { LlmProviderError, openCodeGoProviderFromEnv } from './llmProvider'
-import { clusterEmbeddingsByMutualKnn, createOnnxEmbeddingProvider } from './semanticAnalysis'
+import { clusterEmbeddingsByMutualKnn, createOnnxEmbeddingProvider, SEMANTIC_MODEL_DTYPE, SEMANTIC_MODEL_ID, SEMANTIC_MODEL_REVISION } from './semanticAnalysis'
 import { synthesizeVoiceMap, THEME_ENGINE_VERSION, type Theme } from './themeEngine'
 import { CANONICAL_CATEGORIES, CANONICAL_SIGNAL_TYPES, SIGNAL_TAXONOMY_VERSION, signalTypeThemeType, type CanonicalCategory, type CanonicalSentiment, type CanonicalSignalType } from './canonicalOutcome'
+import { PREPROCESSING_VERSION } from './preprocessing'
+import {
+  acceptedRunPairIds, aspectRuntimeEnabled, aspectSemanticsEnabled, canonicalAspectIdentity,
+  persistAspectSemanticDecision, persistPairDecisions, persistReviewSemanticDecision,
+  projectCachedEmbeddingProvider, reuseCompatibleAspectDecisions, reuseCompatiblePairDecisions,
+  reuseCompatibleReviewDecisions, type SemanticContract,
+} from './incrementalAnalysis'
 
 export const CLUSTER_INTERPRETATION_JOB_KIND = 'cluster_interpretation'
 export const CLUSTER_SIGNAL_INTERPRETATION_JOB_KIND = 'cluster_interpretation_signal'
@@ -16,6 +23,28 @@ export const CLUSTER_INTERPRETATION_SCHEMA_VERSION = 'cluster-interpretation-v9'
 export const CLUSTER_INTERPRETATION_PROMPT_VERSION = 'semantic-taxonomy-v2-v22'
 export const CLUSTER_INTERPRETATION_ROUTING_POLICY = 'capacity-governed-routing-v6'
 export const LLM_INTERPRETED_ENGINE_VERSION = 'llm-interpreted-theme-engine-v1'
+
+async function semanticContractForRun(database: DatabaseClient, runId: string, model: string): Promise<SemanticContract> {
+  const run = await database.query<{ pipelineVersion: string }>(
+    `SELECT pipeline_version AS "pipelineVersion" FROM analysis_runs WHERE id = $1`, [runId],
+  )
+  return {
+    pipelineVersion: run.rows[0]?.pipelineVersion || 'unknown', preprocessingVersion: PREPROCESSING_VERSION,
+    embeddingModel: SEMANTIC_MODEL_ID,
+    embeddingVersion: `${SEMANTIC_MODEL_ID}@${SEMANTIC_MODEL_REVISION}:${SEMANTIC_MODEL_DTYPE}`,
+    promptVersion: CLUSTER_INTERPRETATION_PROMPT_VERSION,
+    schemaVersion: CLUSTER_INTERPRETATION_SCHEMA_VERSION,
+    model,
+    candidateVersion: 'category-first-source-plan-v2',
+    routingPolicy: CLUSTER_INTERPRETATION_ROUTING_POLICY,
+  }
+}
+
+async function embeddingProviderForRun(database: Database, runId: string) {
+  const run = await database.query<{ projectId: string }>(`SELECT project_id AS "projectId" FROM analysis_runs WHERE id = $1`, [runId])
+  const provider = await createOnnxEmbeddingProvider()
+  return run.rows[0] ? projectCachedEmbeddingProvider(database, run.rows[0].projectId, provider) : provider
+}
 
 export function recurrenceSummary(count: number) {
   return `${count} feedback ${count === 1 ? 'item forms' : 'items form'} a category-first recurring candidate.`
@@ -84,6 +113,10 @@ export type ClusterWork = {
     semanticAmbiguousMemberCount?: number
     needsAdjudication?: boolean
     evidence: Array<EvidenceReference & { originalText: string; sourceContext?: string | null }>
+    occurrences?: Array<{
+      signalId: string
+      evidence: EvidenceReference & { originalText: string; sourceContext?: string | null }
+    }>
   }>
 }
 
@@ -197,7 +230,10 @@ export async function loadClusterWork(database: Database, runId: string, themeId
   return { themes: [...byTheme.values()] }
 }
 
-export async function loadEmergingSignalWork(database: Database, runId: string, signalIds: string[] | null = null): Promise<ClusterWork> {
+export async function loadEmergingSignalWork(
+  database: Database, runId: string, signalIds: string[] | null = null,
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<ClusterWork> {
   const parameters: unknown[] = [runId]
   const signalFilter = signalIds?.length
     ? `AND rs.id IN (${signalIds.map((signalId) => {
@@ -221,11 +257,11 @@ export async function loadEmergingSignalWork(database: Database, runId: string, 
       rs.quote_text AS "quoteText", rs.quote_start AS "quoteStart", rs.quote_end AS "quoteEnd",
       r.body_original AS "originalText"
      FROM ranked_signals rs JOIN reviews r ON r.id = rs.review_id
-     WHERE rs.signal_rank = 1 ${signalFilter}
+     WHERE ${aspectSemanticsEnabled(environment) ? 'TRUE' : 'rs.signal_rank = 1'} ${signalFilter}
      ORDER BY r.imported_at, r.id, rs.quote_start, rs.id`,
     parameters,
   )
-  return { themes: result.rows.map((row) => ({
+  return deduplicateEmergingSignalWork({ themes: result.rows.map((row) => ({
     themeId: row.id,
     currentLabel: row.label,
     currentType: row.signalType,
@@ -234,7 +270,20 @@ export async function loadEmergingSignalWork(database: Database, runId: string, 
       reviewId: row.reviewId, quoteText: row.quoteText, quoteStart: row.quoteStart,
       quoteEnd: row.quoteEnd, originalText: row.originalText,
     }],
-  })) }
+  })) })
+}
+
+function deduplicateEmergingSignalWork(work: ClusterWork): ClusterWork {
+  const unique = new Map<string, ClusterWork['themes'][number]>()
+  for (const theme of work.themes) {
+    const evidence = theme.evidence[0]
+    const key = `${evidence.reviewId}\0${evidence.quoteText}`
+    const occurrences = theme.occurrences ?? [{ signalId: theme.themeId, evidence }]
+    const existing = unique.get(key)
+    if (existing) existing.occurrences!.push(...occurrences)
+    else unique.set(key, { ...theme, occurrences: [...occurrences] })
+  }
+  return { themes: [...unique.values()] }
 }
 
 export function selectedInterpretationThemes(work: ClusterWork) {
@@ -262,9 +311,10 @@ export function clusterInterpretationThemeBatches(work: ClusterWork) {
 }
 
 export function emergingSignalInterpretationBatches(work: ClusterWork) {
+  const uniqueWork = deduplicateEmergingSignalWork(work)
   return Array.from(
-    { length: Math.ceil(work.themes.length / EMERGING_SIGNAL_INTERPRETATION_BATCH_SIZE) },
-    (_, index) => ({ themes: work.themes.slice(
+    { length: Math.ceil(uniqueWork.themes.length / EMERGING_SIGNAL_INTERPRETATION_BATCH_SIZE) },
+    (_, index) => ({ themes: uniqueWork.themes.slice(
       index * EMERGING_SIGNAL_INTERPRETATION_BATCH_SIZE,
       (index + 1) * EMERGING_SIGNAL_INTERPRETATION_BATCH_SIZE,
     ) }),
@@ -275,6 +325,14 @@ export function splitEmergingSignalInterpretationBatch(signalIds: string[]) {
   if (signalIds.length < 2) return [signalIds]
   const midpoint = Math.floor(signalIds.length / 2)
   return [signalIds.slice(0, midpoint), signalIds.slice(midpoint)]
+}
+
+export function emergingSignalRecoveryBatches(work: ClusterWork) {
+  const themes = deduplicateEmergingSignalWork(work).themes
+  if (themes.length < 2) return []
+  return splitEmergingSignalInterpretationBatch(themes.map((theme) => theme.themeId)).map((ids) => ({
+    themes: ids.map((id) => themes.find((theme) => theme.themeId === id)!),
+  }))
 }
 
 function themeIdsFromJob(job: LeasedLlmJob) {
@@ -381,7 +439,11 @@ const record = (value: unknown): value is Record<string, unknown> => Boolean(val
 const boundedText = (value: unknown, maximum: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= maximum
 const genericInterpretationLabel = /^(?:insufficient validated evidence|unclustered feedback|customers discuss|unrelated (?:feedback|feature requests?))$/i
 
-function validateReference(value: unknown, allowed: Map<string, string>): EvidenceReference | null {
+function validateReference(
+  value: unknown,
+  allowed: Map<string, string>,
+  supplied: Array<EvidenceReference & { originalText: string }> = [],
+): EvidenceReference | null {
   if (!record(value) || typeof value.reviewId !== 'string' || typeof value.quoteText !== 'string' || !value.quoteText) return null
   const original = allowed.get(value.reviewId)
   if (!original) return null
@@ -390,6 +452,16 @@ function validateReference(value: unknown, allowed: Map<string, string>): Eviden
       || (value.quoteStart as number) < 0 || (value.quoteEnd as number) <= (value.quoteStart as number)
       || original.slice(value.quoteStart as number, value.quoteEnd as number) !== value.quoteText) return null
     return { reviewId: value.reviewId, quoteText: value.quoteText, quoteStart: value.quoteStart as number, quoteEnd: value.quoteEnd as number }
+  }
+  const suppliedReference = supplied.find((item) => item.reviewId === value.reviewId
+    && item.quoteText === value.quoteText
+    && item.originalText === original
+    && original.slice(item.quoteStart, item.quoteEnd) === item.quoteText)
+  if (suppliedReference) return {
+    reviewId: suppliedReference.reviewId,
+    quoteText: suppliedReference.quoteText,
+    quoteStart: suppliedReference.quoteStart,
+    quoteEnd: suppliedReference.quoteEnd,
   }
   const quoteStart = original.indexOf(value.quoteText)
   if (quoteStart < 0 || original.indexOf(value.quoteText, quoteStart + 1) >= 0) return null
@@ -407,6 +479,13 @@ type CategoryFirstSignal = {
   primaryCategory: CanonicalCategory
   primarySignalType: CanonicalSignalType
   sourceText?: string
+  topicIdentity?: string
+}
+
+export function aspectIdentityGroupAssignments(signals: Array<{ topicIdentity: string }>) {
+  const groups = new Map<string, number[]>()
+  signals.forEach((signal, index) => groups.set(signal.topicIdentity, [...(groups.get(signal.topicIdentity) || []), index]))
+  return [...groups.values()]
 }
 
 export type PairAdjudicationCandidate = {
@@ -560,9 +639,10 @@ export function categoryFirstGroupAssignments(
   return grouped
 }
 
-async function loadCategoryFirstSignals(database: Database, runId: string) {
+async function loadCategoryFirstSignals(database: Database, runId: string, aspectMode = false) {
   const result = await database.query<{
-    signalId: string; reviewId: string; sourceText: string; interpretation: Record<string, unknown>
+    signalId: string; reviewId: string; sourceText: string; signalType: string; normalizedAspect: string
+    interpretation: Record<string, unknown>
   }>(
     `WITH ranked AS (
        SELECT rs.*, ROW_NUMBER() OVER (
@@ -572,11 +652,12 @@ async function loadCategoryFirstSignals(database: Database, runId: string) {
          AND (rs.attributes ? 'canonicalOutcome' OR rs.attributes ? 'emergingInterpretation')
      )
      SELECT rs.id AS "signalId", rs.review_id AS "reviewId", COALESCE(r.body_original, '') AS "sourceText",
+       rs.signal_type AS "signalType", rs.normalized_aspect AS "normalizedAspect",
        COALESCE(rs.attributes->'canonicalOutcome', rs.attributes->'emergingInterpretation') AS interpretation
      FROM ranked rs JOIN analysis_run_reviews arr
        ON arr.analysis_run_id = rs.analysis_run_id AND arr.review_id = rs.review_id
      JOIN reviews r ON r.id = rs.review_id
-     WHERE rs.signal_rank = 1 AND arr.inclusion_status = 'included'
+     WHERE ${aspectMode ? 'TRUE' : 'rs.signal_rank = 1'} AND arr.inclusion_status = 'included'
      ORDER BY rs.review_id`,
     [runId],
   )
@@ -594,6 +675,7 @@ async function loadCategoryFirstSignals(database: Database, runId: string) {
       evidence: evidence as EvidenceReference,
       primaryCategory: value.primaryCategory as CanonicalCategory,
       sourceText: row.sourceText,
+      topicIdentity: canonicalAspectIdentity(row.signalType, row.normalizedAspect || value.aspect),
       primarySignalType: (CANONICAL_SIGNAL_TYPES.includes(value.primarySignalType as CanonicalSignalType)
         ? value.primarySignalType : value.signalTypes[0]) as CanonicalSignalType,
     }]
@@ -603,7 +685,7 @@ async function loadCategoryFirstSignals(database: Database, runId: string) {
 async function categoryFirstPairWork(database: Database, runId: string, requestedPairs: Array<[string, string]> | null = null) {
   const signals = await loadCategoryFirstSignals(database, runId)
   if (!signals.length) return { pairs: [] as PairAdjudicationCandidate[], signalPairs: [] as Array<[string, string]> }
-  const provider = await createOnnxEmbeddingProvider()
+  const provider = await embeddingProviderForRun(database, runId)
   const vectors = await provider.embed(signals.map((signal) => signal.sourceText || ''))
   const bySignalId = new Map(signals.map((signal, index) => [signal.signalId, index]))
   const planned = requestedPairs ?? categoryFirstGroupPlan(signals, vectors).ambiguousPairs.map((pair) => [
@@ -632,10 +714,16 @@ async function enqueuePairAdjudications(database: Database, input: {
   if ((existing.rows[0]?.count || 0) > 0) return { created: false, count: existing.rows[0].count }
   const work = await categoryFirstPairWork(database, input.analysisRunId)
   if (!work.pairs.length) return { created: false, count: 0 }
+  const contract = await semanticContractForRun(database, input.analysisRunId, policy.model)
+  const reuse = await reuseCompatiblePairDecisions(database, input.analysisRunId, work.pairs.map((pair) => pair.pairId), contract)
+  const unseen = new Set(reuse.unseenPairIds)
+  const pending = work.pairs.map((pair, index) => ({ pair, signalPair: work.signalPairs[index] }))
+    .filter(({ pair }) => unseen.has(pair.pairId))
+  if (!pending.length) return { created: false, count: 0 }
   const queue = new DurableLlmQueue(database)
-  const batches = Array.from({ length: Math.ceil(work.pairs.length / 5) }, (_, index) => ({
-    pairs: work.pairs.slice(index * 5, index * 5 + 5),
-    signalPairs: work.signalPairs.slice(index * 5, index * 5 + 5),
+  const batches = Array.from({ length: Math.ceil(pending.length / 5) }, (_, index) => ({
+    pairs: pending.slice(index * 5, index * 5 + 5).map((item) => item.pair),
+    signalPairs: pending.slice(index * 5, index * 5 + 5).map((item) => item.signalPair),
   }))
   const reservationMicro = policy.budgetEnforced
     ? Math.max(1, Math.floor(Math.min(policy.reservationMicro, policy.runBudgetMicro) / batches.length)) : 0
@@ -654,6 +742,8 @@ async function enqueuePairAdjudications(database: Database, input: {
 }
 
 async function acceptedPairIds(database: Database, runId: string) {
+  const persisted = await acceptedRunPairIds(database, runId)
+  if (persisted) return persisted
   const result = await database.query<{ payload: unknown }>(
     `SELECT result_payload AS payload FROM llm_jobs
      WHERE analysis_run_id = $1 AND kind LIKE $2 AND state = 'succeeded'`,
@@ -665,31 +755,39 @@ async function acceptedPairIds(database: Database, runId: string) {
     .map((decision) => decision.pairId))
 }
 
-async function materializeCategoryFirstGroups(database: Database, runId: string, mergePairIds = new Set<string>()) {
+async function materializeCategoryFirstGroups(
+  database: Database, runId: string, mergePairIds = new Set<string>(), aspectMode = false,
+) {
   const existing = await database.query<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM themes
      WHERE analysis_run_id = $1 AND validation->>'projection' = 'category_first'`, [runId],
   )
   if ((existing.rows[0]?.count || 0) > 0) return existing.rows[0].count
-  const signals = await loadCategoryFirstSignals(database, runId)
+  const signals = await loadCategoryFirstSignals(database, runId, aspectMode)
   if (!signals.length) return 0
-  const provider = await createOnnxEmbeddingProvider()
-  const vectors = await provider.embed(signals.map((signal) => signal.sourceText || ''))
-  const groups = categoryFirstGroupAssignments(signals, vectors, { includeSingletons: true, mergePairIds }).map((indices) => indices.map((index) => signals[index]))
+  const vectors = aspectMode ? [] : await (await embeddingProviderForRun(database, runId))
+    .embed(signals.map((signal) => signal.sourceText || ''))
+  const assignments = aspectMode
+    ? aspectIdentityGroupAssignments(signals.map((signal) => ({ topicIdentity: signal.topicIdentity! })))
+    : categoryFirstGroupAssignments(signals, vectors, { includeSingletons: true, mergePairIds })
+  const groups = assignments.map((indices) => indices.map((index) => signals[index]))
     .sort((left, right) => right.length - left.length || left[0].label.localeCompare(right[0].label))
   await database.transaction(async (transaction) => {
     await transaction.query(`DELETE FROM theme_evidence WHERE theme_id IN (SELECT id FROM themes WHERE analysis_run_id = $1)`, [runId])
     await transaction.query(`DELETE FROM themes WHERE analysis_run_id = $1`, [runId])
     for (const [index, group] of groups.entries()) {
-      const themeId = `${runId}:category-first:${createHash('sha256').update(group.map((signal) => signal.reviewId).sort().join('\0')).digest('hex').slice(0, 12)}`
+      const themeId = `${runId}:category-first:${createHash('sha256').update(
+        aspectMode ? group[0].topicIdentity! : group.map((signal) => signal.reviewId).sort().join('\0'),
+      ).digest('hex').slice(0, 12)}`
       const signalTypes = [...new Set(group.flatMap((signal) => signal.signalTypes))]
         .filter((signalType): signalType is SignalType => SIGNAL_TYPES.includes(signalType as SignalType)).sort()
       const representative = [...group].sort((left, right) => left.label.length - right.label.length || left.label.localeCompare(right.label))[0]
       const label = representative.label
+      const independentReviewCount = new Set(group.map((signal) => signal.reviewId)).size
       const metrics = {
-        signalCount: group.length, independentReviewCount: group.length, prevalence: group.length / signals.length,
+        signalCount: group.length, independentReviewCount, prevalence: independentReviewCount / new Set(signals.map((signal) => signal.reviewId)).size,
         averageSignalConfidence: group.reduce((sum, signal) => sum + signal.confidence, 0) / group.length,
-        confidenceLabel: group.length >= 5 ? 'Moderate' : 'Emerging',
+        confidenceLabel: independentReviewCount >= 5 ? 'Moderate' : 'Emerging',
       }
       const primaryCategory = group[0].primaryCategory
       const validation = { status: 'validated', projection: 'category_first', category: primaryCategory,
@@ -707,7 +805,7 @@ async function materializeCategoryFirstGroups(database: Database, runId: string,
         `INSERT INTO themes
           (id, analysis_run_id, name, description, theme_type, sentiment, confidence, rank, metrics, validation, engine_version)
          VALUES ($1,$2,$3,$4,$5,'mixed',$6,$7,$8,$9,$10)`,
-        [themeId, runId, label, recurrenceSummary(group.length), signalTypeThemeType(representative.primarySignalType),
+        [themeId, runId, label, recurrenceSummary(independentReviewCount), signalTypeThemeType(representative.primarySignalType),
           metrics.confidenceLabel, index + 1, JSON.stringify(metrics), JSON.stringify(validation), LLM_INTERPRETED_ENGINE_VERSION],
       )
       for (const [evidenceIndex, signal] of group.entries()) {
@@ -834,7 +932,7 @@ export function validateClusterInterpretations(
       rejected.push({ index, reason: 'invalid_grouping_assessment' }); return
     }
     const allowed = new Map(theme.evidence.map((item) => [item.reviewId, item.originalText]))
-    const evidence = candidate.evidence.map((item) => validateReference(item, allowed))
+    const evidence = candidate.evidence.map((item) => validateReference(item, allowed, theme.evidence))
     if (evidence.some((item) => item === null)) { rejected.push({ index, reason: 'invalid_evidence_span' }); return }
     if (publicationAction === 'publish' && groupingAction === 'keep') {
       const referencedReviews = new Set((evidence as EvidenceReference[]).map((item) => item.reviewId))
@@ -872,23 +970,33 @@ export function validateClusterInterpretations(
   return { accepted, rejected, omitted }
 }
 
+export function interpretationOccurrences(work: ClusterWork, candidate: ClusterInterpretationCandidate) {
+  const theme = work.themes.find((item) => item.themeId === candidate.themeId)
+  return theme?.occurrences ?? [{ signalId: candidate.themeId, evidence: candidate.evidence[0] }]
+}
+
 async function enqueueEmergingSignalRecovery(database: Database, job: LeasedLlmJob, signalIds: string[], environment: NodeJS.ProcessEnv) {
   const policy = clusterInterpretationPolicyFromEnv(environment)
   if (!policy || signalIds.length < 2) throw new Error('INCOMPLETE_EMERGING_SIGNAL_INTERPRETATIONS')
   const queue = new DurableLlmQueue(database)
-  const batches = splitEmergingSignalInterpretationBatch(signalIds)
+  const aspectMode = await aspectRuntimeEnabled(database, environment)
+  const work = await loadEmergingSignalWork(database, job.analysisRunId, signalIds,
+    aspectMode ? { ...environment, VOICE_LAB_ASPECT_SEMANTICS_ENABLED: 'true' } : environment)
+  const batches = emergingSignalRecoveryBatches(work)
+  if (batches.length === 0) throw new Error('INCOMPLETE_EMERGING_SIGNAL_INTERPRETATIONS')
   const reservationMicro = policy.budgetEnforced
     ? Math.max(1, Math.floor(Math.min(policy.reservationMicro, policy.runBudgetMicro) / batches.length))
     : 0
   for (const [index, batch] of batches.entries()) {
-    const work = await loadEmergingSignalWork(database, job.analysisRunId, batch)
+    const childSignalIds = batch.themes.flatMap((theme) =>
+      theme.occurrences?.map((occurrence) => occurrence.signalId) ?? [theme.themeId])
     await queue.enqueue({
       organizationId: job.organizationId, projectId: job.projectId, analysisRunId: job.analysisRunId,
-      kind: `${EMERGING_SIGNAL_INTERPRETATION_JOB_KIND}:${batch.join(',')}`,
+      kind: `${EMERGING_SIGNAL_INTERPRETATION_JOB_KIND}:${childSignalIds.join(',')}`,
       provider: job.provider, model: job.model,
-      inputDigest: workDigest({ work, targetSignal: null, emerging: true }),
+      inputDigest: workDigest({ work: batch, targetSignal: null, emerging: true }),
       promptVersion: job.promptVersion, schemaVersion: job.schemaVersion, routingPolicy: job.routingPolicy,
-      estimatedInputTokens: Math.ceil(JSON.stringify(work).length / 4), maxOutputTokens: policy.maxOutputTokens,
+      estimatedInputTokens: Math.ceil(JSON.stringify(batch).length / 4), maxOutputTokens: policy.maxOutputTokens,
       reservationMicro, priority: 10, maxAttempts: 2,
       deadlineAt: new Date(Date.now() + policy.deadlineMs * (index + 1)),
     })
@@ -896,10 +1004,11 @@ async function enqueueEmergingSignalRecovery(database: Database, job: LeasedLlmJ
   await database.query(
     `UPDATE analysis_runs SET quality_report = quality_report || $2::jsonb WHERE id = $1`,
     [job.analysisRunId, JSON.stringify({ emergingSignalInterpretationRecovery: {
-      state: 'split_queued', parentSize: signalIds.length, childSizes: batches.map((batch) => batch.length),
+      state: 'split_queued', parentSize: work.themes.length, occurrenceCount: signalIds.length,
+      childSizes: batches.map((batch) => batch.themes.length),
     } })],
   )
-  return { state: 'split_queued', childSizes: batches.map((batch) => batch.length) }
+  return { state: 'split_queued', childSizes: batches.map((batch) => batch.themes.length) }
 }
 
 async function persistCandidates(database: Database, job: LeasedLlmJob, completionContent: string, environment: NodeJS.ProcessEnv) {
@@ -911,7 +1020,9 @@ async function persistCandidates(database: Database, job: LeasedLlmJob, completi
     const work = await categoryFirstPairWork(database, job.analysisRunId, pairSignalIds)
     let parsed: unknown
     try { parsed = JSON.parse(completionContent) } catch { throw new LlmProviderError('INVALID_RESPONSE', 'The analysis engine returned invalid pair JSON.') }
-    return validatePairAdjudications(work.pairs, parsed)
+    const decisions = validatePairAdjudications(work.pairs, parsed)
+    await persistPairDecisions(database, job.analysisRunId, decisions, await semanticContractForRun(database, job.analysisRunId, job.model))
+    return decisions
   }
   if (!emergingSignalIds) throw new Error('UNSUPPORTED_LLM_JOB_KIND')
   const work = emergingSignalIds
@@ -963,22 +1074,32 @@ async function persistCandidates(database: Database, job: LeasedLlmJob, completi
   await database.transaction(async (transaction) => {
     for (const candidate of validation.accepted) {
       if (emergingSignalIds) {
-        await transaction.query(
-          `UPDATE review_signals SET label = $3, confidence = LEAST(confidence, 0.49),
-            attributes = attributes || $4::jsonb
-           WHERE id = $1 AND analysis_run_id = $2`,
-          [candidate.themeId, job.analysisRunId, candidate.label, JSON.stringify({ canonicalOutcome: {
-            label: candidate.label, aspect: candidate.aspect, topic: candidate.aspect,
-            primaryCategory: dominantActionableCategory(candidate.signalTypes, candidate.evidence[0]?.quoteText),
-            signalTaxonomyVersion: SIGNAL_TAXONOMY_VERSION,
-            primarySignalType: candidate.signalTypes[0], proposedTypeLabel: candidate.proposedTypeLabel,
-            sentiment: candidate.sentiment,
-            confidence: Math.min(candidate.confidence, 0.49),
-            evidence: candidate.evidence[0], signalTypes: candidate.signalTypes,
-            promptVersion: CLUSTER_INTERPRETATION_PROMPT_VERSION,
-            schemaVersion: CLUSTER_INTERPRETATION_SCHEMA_VERSION, provider: 'opencode_go', model: job.model,
-          } })],
-        )
+        const occurrences = interpretationOccurrences(work, candidate)
+        for (const occurrence of occurrences) {
+          const canonicalOutcome = {
+          label: candidate.label, aspect: candidate.aspect, topic: candidate.aspect,
+          primaryCategory: dominantActionableCategory(candidate.signalTypes, occurrence.evidence.quoteText),
+          signalTaxonomyVersion: SIGNAL_TAXONOMY_VERSION,
+          primarySignalType: candidate.signalTypes[0], proposedTypeLabel: candidate.proposedTypeLabel,
+          sentiment: candidate.sentiment,
+          confidence: Math.min(candidate.confidence, 0.49),
+          evidence: occurrence.evidence, signalTypes: candidate.signalTypes,
+          promptVersion: CLUSTER_INTERPRETATION_PROMPT_VERSION,
+          schemaVersion: CLUSTER_INTERPRETATION_SCHEMA_VERSION, provider: 'opencode_go', model: job.model,
+        }
+          await transaction.query(
+            `UPDATE review_signals SET label = $3, confidence = LEAST(confidence, 0.49),
+              attributes = attributes || $4::jsonb
+             WHERE id = $1 AND analysis_run_id = $2`,
+            [occurrence.signalId, job.analysisRunId, candidate.label, JSON.stringify({ canonicalOutcome })],
+          )
+          const contract = await semanticContractForRun(transaction, job.analysisRunId, job.model)
+          if (await aspectRuntimeEnabled(transaction, environment)) {
+            await persistAspectSemanticDecision(transaction, job.analysisRunId, occurrence.signalId, canonicalOutcome, contract)
+          } else {
+            await persistReviewSemanticDecision(transaction, job.analysisRunId, occurrence.evidence.reviewId, canonicalOutcome, contract)
+          }
+        }
         continue
       }
       const current = await transaction.query<{ validation: Record<string, unknown> }>(
@@ -1019,10 +1140,35 @@ export async function enqueueClusterInterpretation(database: Database, input: {
 }, environment: NodeJS.ProcessEnv = process.env) {
   const policy = clusterInterpretationPolicyFromEnv(environment)
   if (!policy) return { state: 'disabled_or_incomplete_configuration' as const }
-  const emergingWork = await loadEmergingSignalWork(database, input.analysisRunId)
+  const contract = await semanticContractForRun(database, input.analysisRunId, policy.model)
+  const aspectMode = await aspectRuntimeEnabled(database, environment)
+  let signalIds: string[] | null = null
+  let reused = 0
+  if (aspectMode) {
+    const reuse = await reuseCompatibleAspectDecisions(database, input.analysisRunId, contract)
+    reused = reuse.reused
+    if (reuse.compatible) signalIds = reuse.unseenSignalIds
+  } else {
+    const reuse = await reuseCompatibleReviewDecisions(database, input.analysisRunId, contract)
+    reused = reuse.reused
+    if (reuse.compatible) {
+      const unseen = await database.query<{ id: string }>(
+        `WITH ranked AS (
+           SELECT id, review_id, ROW_NUMBER() OVER (PARTITION BY review_id ORDER BY confidence DESC, LENGTH(quote_text) DESC, quote_start, id) AS rank
+           FROM review_signals WHERE analysis_run_id = $1
+         ) SELECT id FROM ranked WHERE rank = 1 AND review_id = ANY($2::uuid[]) ORDER BY review_id`,
+        [input.analysisRunId, reuse.unseenReviewIds],
+      )
+      signalIds = unseen.rows.map((row) => row.id)
+    }
+  }
+  if (signalIds?.length === 0) return { state: 'reused_compatible_decisions' as const, reused }
+  const emergingWork = await loadEmergingSignalWork(database, input.analysisRunId, signalIds,
+    aspectMode ? { ...environment, VOICE_LAB_ASPECT_SEMANTICS_ENABLED: 'true' } : environment)
   if (emergingWork.themes.length === 0) return { state: 'no_supported_themes' as const }
   const jobSpecs = emergingSignalInterpretationBatches(emergingWork).map((batch) => ({
-      kind: `${EMERGING_SIGNAL_INTERPRETATION_JOB_KIND}:${batch.themes.map((theme) => theme.themeId).join(',')}`,
+      kind: `${EMERGING_SIGNAL_INTERPRETATION_JOB_KIND}:${batch.themes.flatMap((theme) =>
+        theme.occurrences?.map((occurrence) => occurrence.signalId) ?? [theme.themeId]).join(',')}`,
       work: { themes: batch.themes }, targetSignal: null, emerging: true,
     }))
   const queue = new DurableLlmQueue(database)
@@ -1058,13 +1204,14 @@ export async function enqueueClusterInterpretation(database: Database, input: {
   return { state: jobs.some((job) => job.state === 'queued') ? 'queued' as const : jobs[0].state, jobIds: jobs.map((job) => job.id), created: jobs.some((job) => job.created) }
 }
 
-export async function settleClusterInterpretationRuns(database: Database) {
+export async function settleClusterInterpretationRuns(database: Database, environment: NodeJS.ProcessEnv = process.env) {
   const runs = await database.query<{ id: string; organizationId: string; projectId: string }>(
     `SELECT ar.id, po.organization_id AS "organizationId", ar.project_id AS "projectId"
      FROM analysis_runs ar JOIN project_organizations po ON po.project_id = ar.project_id
      WHERE ar.status = 'interpreting_clusters' ORDER BY ar.created_at`,
   )
   for (const run of runs.rows) {
+    const aspectMode = await aspectRuntimeEnabled(database, environment)
     const jobs = await database.query<{ total: number; emerging: number; pairs: number; active: number; succeeded: number; fallback: number; failed: number; semanticFailed: number }>(
       `SELECT COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE kind LIKE '${EMERGING_SIGNAL_INTERPRETATION_JOB_KIND}:%')::int AS emerging,
@@ -1081,11 +1228,17 @@ export async function settleClusterInterpretationRuns(database: Database) {
     const counts = jobs.rows[0] ?? { total: 0, emerging: 0, pairs: 0, active: 0, succeeded: 0, fallback: 0, failed: 0, semanticFailed: 0 }
     if (counts.active > 0) continue
     const emerging = await database.query<{ total: number; interpreted: number }>(
-      `SELECT COUNT(DISTINCT arr.review_id)::int AS total,
-        COUNT(DISTINCT arr.review_id) FILTER (WHERE rs.attributes ? 'canonicalOutcome' OR rs.attributes ? 'emergingInterpretation')::int AS interpreted
-       FROM analysis_run_reviews arr
-       LEFT JOIN review_signals rs ON rs.analysis_run_id = arr.analysis_run_id AND rs.review_id = arr.review_id
-       WHERE arr.analysis_run_id = $1 AND arr.inclusion_status = 'included'`,
+      aspectMode
+        ? `SELECT COUNT(rs.id)::int AS total,
+            COUNT(rs.id) FILTER (WHERE rs.attributes ? 'canonicalOutcome' OR rs.attributes ? 'emergingInterpretation')::int AS interpreted
+           FROM analysis_run_reviews arr JOIN review_signals rs
+             ON rs.analysis_run_id = arr.analysis_run_id AND rs.review_id = arr.review_id
+           WHERE arr.analysis_run_id = $1 AND arr.inclusion_status = 'included'`
+        : `SELECT COUNT(DISTINCT arr.review_id)::int AS total,
+            COUNT(DISTINCT arr.review_id) FILTER (WHERE rs.attributes ? 'canonicalOutcome' OR rs.attributes ? 'emergingInterpretation')::int AS interpreted
+           FROM analysis_run_reviews arr
+           LEFT JOIN review_signals rs ON rs.analysis_run_id = arr.analysis_run_id AND rs.review_id = arr.review_id
+           WHERE arr.analysis_run_id = $1 AND arr.inclusion_status = 'included'`,
       [run.id],
     )
     const emergingCoverage = emerging.rows[0] ?? { total: 0, interpreted: 0 }
@@ -1106,20 +1259,20 @@ export async function settleClusterInterpretationRuns(database: Database) {
       continue
     }
     if (allEmergingInterpreted && counts.semanticFailed === 0) {
-      const policy = clusterInterpretationPolicyFromEnv()
-      if (policy) {
+      const policy = clusterInterpretationPolicyFromEnv(environment)
+      if (policy && !aspectMode) {
         const pairQueue = await enqueuePairAdjudications(database, {
           organizationId: run.organizationId, projectId: run.projectId, analysisRunId: run.id,
         }, policy)
         if (pairQueue.created) continue
       }
       const mergePairIds = await acceptedPairIds(database, run.id)
-      const groupCount = await materializeCategoryFirstGroups(database, run.id, mergePairIds)
+      const groupCount = await materializeCategoryFirstGroups(database, run.id, mergePairIds, aspectMode)
       await database.query(
         `UPDATE analysis_runs SET quality_report = quality_report || $2::jsonb WHERE id = $1`,
         [run.id, JSON.stringify({ categoryFirstProjection: {
           state: groupCount > 0 ? 'completed' : 'no_recurring_groups', groupCount,
-          validation: 'exact_per_signal_category_topic_evidence',
+          validation: 'exact_per_signal_category_topic_evidence', aspectSemantics: aspectMode,
         } })],
       )
     }
@@ -1190,7 +1343,9 @@ export async function createClusterInterpretationWorker(database: Database, envi
         return { model: job.model, messages: buildPairAdjudicationMessages(work.pairs), maxTokens: policy.maxOutputTokens, temperature: 0, json: true, enableThinking: false }
       }
       if (!emergingSignalIds || themeIds || targetSignal) throw new Error('UNSUPPORTED_LLM_JOB_KIND')
-      const work = await loadEmergingSignalWork(database, job.analysisRunId, emergingSignalIds)
+      const aspectMode = await aspectRuntimeEnabled(database, environment)
+      const work = await loadEmergingSignalWork(database, job.analysisRunId, emergingSignalIds,
+        aspectMode ? { ...environment, VOICE_LAB_ASPECT_SEMANTICS_ENABLED: 'true' } : environment)
       return { model: job.model, messages: buildClusterInterpretationMessages(work, null, true), maxTokens: policy.maxOutputTokens, temperature: 0, json: true, enableThinking: false }
     },
     acceptCandidate: (completion, job) => persistCandidates(database, job, completion.content, environment),

@@ -26,6 +26,7 @@ describe('managed tenant migration', () => {
       '005_waitlist_admin_monitoring.sql',
       '006_runtime_login.sql',
       '007_first_login_workspace.sql',
+      '008_incremental_semantic_state.sql',
     ])
 
     const base = await readFile(resolve(directory, files[0]), 'utf8')
@@ -48,7 +49,9 @@ describe('managed tenant migration', () => {
       );
       CREATE TABLE storage.objects (id UUID PRIMARY KEY, bucket_id TEXT NOT NULL, name TEXT NOT NULL);
     `)
-    for (const name of files) await database.exec(await readFile(resolve(directory, name), 'utf8'))
+    for (const name of files.filter((name) => name !== '008_incremental_semantic_state.sql')) {
+      await database.exec(await readFile(resolve(directory, name), 'utf8'))
+    }
 
     const tables = await database.query<{ tableName: string }>(`
       SELECT table_name AS "tableName" FROM information_schema.tables
@@ -184,6 +187,33 @@ describe('managed tenant migration', () => {
     )
     expect(helperResult.rows).toEqual([{ allowed: false }])
     await database.exec('RESET ROLE')
+  })
+
+  it('defines private versioned project semantic state and immutable run decision lineage', async () => {
+    const migrationPath = resolve(process.cwd(), 'server/migrations/008_incremental_semantic_state.sql')
+    expect(existsSync(migrationPath)).toBe(true)
+    if (!existsSync(migrationPath)) return
+    const migration = await readFile(migrationPath, 'utf8')
+    for (const table of [
+      'project_semantic_embeddings', 'project_review_semantic_decisions',
+      'project_review_pair_decisions', 'analysis_run_pair_decisions',
+      'project_aspect_semantic_decisions', 'analysis_run_aspect_decisions',
+    ]) {
+      expect(migration).toContain(`CREATE TABLE public.${table}`)
+      expect(migration).toContain(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY`)
+      expect(migration).toContain(`ALTER TABLE public.${table} FORCE ROW LEVEL SECURITY`)
+    }
+    expect(migration).toContain('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions')
+    expect(migration).toContain('embedding extensions.vector(384)')
+    expect(migration).toContain('REVOKE ALL ON SCHEMA extensions FROM anon, authenticated, PUBLIC')
+    expect(migration).toContain('GRANT USAGE ON SCHEMA extensions TO voice_lab_api')
+    expect(migration).toContain('CHECK (left_review_id < right_review_id)')
+    expect(migration).toContain('REFERENCES public.analysis_runs(id) ON DELETE CASCADE')
+    expect(migration).toContain('topic_identity TEXT NOT NULL')
+    expect(migration).toContain('signal_fingerprint TEXT NOT NULL')
+    expect(migration).toContain('REVOKE ALL ON public.project_semantic_embeddings')
+    expect(migration).toContain('FROM voice_lab_api;')
+    expect(migration).not.toMatch(/GRANT .* TO (?:anon|authenticated|PUBLIC)/i)
   })
 
   it('allows only the verified runtime identity to provision its first personal workspace', async () => {

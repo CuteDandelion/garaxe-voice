@@ -137,6 +137,8 @@ export type ClusterInterpretationPolicy = {
   providerConcurrency: number
   organizationConcurrency: number
   maxOutputTokens: number
+  primaryInputUsdPerMillion: number
+  primaryOutputUsdPerMillion: number
   deadlineMs: number
 }
 
@@ -149,6 +151,8 @@ const nonNegativeNumber = (value: string | undefined) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
+
+const MAX_PROVIDER_COMPLETION_TOKENS = 16_384
 
 export function clusterInterpretationPolicyFromEnv(environment: NodeJS.ProcessEnv = process.env): ClusterInterpretationPolicy | null {
   if (environment.GARAXE_LLM_ENRICHMENT_ENABLED !== 'true' || !environment.OPENCODE_GO_API_KEY) return null
@@ -163,7 +167,9 @@ export function clusterInterpretationPolicyFromEnv(environment: NodeJS.ProcessEn
     globalConcurrency: positiveInteger(environment.GARAXE_LLM_GLOBAL_CONCURRENCY),
     providerConcurrency: positiveInteger(environment.GARAXE_LLM_PROVIDER_CONCURRENCY),
     organizationConcurrency: positiveInteger(environment.GARAXE_LLM_ORGANIZATION_CONCURRENCY),
-    maxOutputTokens: positiveInteger(environment.GARAXE_LLM_MAX_OUTPUT_TOKENS),
+    maxOutputTokens: positiveInteger(environment.OPENCODE_GO_MAX_COMPLETION_TOKENS ?? environment.GARAXE_LLM_MAX_OUTPUT_TOKENS),
+    primaryInputUsdPerMillion: nonNegativeNumber(environment.OPENCODE_GO_PRIMARY_INPUT_USD_PER_MILLION ?? '0'),
+    primaryOutputUsdPerMillion: nonNegativeNumber(environment.OPENCODE_GO_PRIMARY_OUTPUT_USD_PER_MILLION ?? '0'),
     deadlineMs: positiveInteger(environment.GARAXE_LLM_DEADLINE_MS),
   }
   const budgetValues = budgetEnforced ? {
@@ -178,6 +184,7 @@ export function clusterInterpretationPolicyFromEnv(environment: NodeJS.ProcessEn
   const validModel = (value: string) => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(value)
   if (!model || !validModel(model) || (fallbackModel !== undefined && (!validModel(fallbackModel) || fallbackModel === model))
     || Object.values(operationalValues).some((value) => value === null)
+    || (operationalValues.maxOutputTokens ?? 0) > MAX_PROVIDER_COMPLETION_TOKENS
     || Object.values(budgetValues).some((value) => value === null)) return null
   return { model, fallbackModel, budgetEnforced, ...operationalValues, ...budgetValues } as ClusterInterpretationPolicy
 }
@@ -1361,6 +1368,10 @@ export async function createClusterInterpretationWorker(database: Database, envi
       await enqueueEmergingSignalRecovery(database, job, signalIds, environment)
       return true
     },
-    calculateCostMicro: () => null,
+    calculateCostMicro: (completion) => completion.model === policy.model
+      && completion.usage.inputTokens !== null && completion.usage.outputTokens !== null
+      ? Math.round(completion.usage.inputTokens * policy.primaryInputUsdPerMillion
+        + completion.usage.outputTokens * policy.primaryOutputUsdPerMillion)
+      : null,
   })
 }

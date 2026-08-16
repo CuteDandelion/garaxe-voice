@@ -20,6 +20,7 @@ export type LlmProviderErrorCode =
   | 'RATE_LIMITED'
   | 'MODEL_UNAVAILABLE'
   | 'PROVIDER_UNAVAILABLE'
+  | 'REASONING_ONLY_TRUNCATED'
   | 'INVALID_RESPONSE'
 
 export class LlmProviderError extends Error {
@@ -52,7 +53,7 @@ export type CompleteRequest = {
 }
 
 type ProviderPayload = {
-  choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>
+  choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown }; finish_reason?: unknown }>
   usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown }
 }
 
@@ -116,15 +117,19 @@ export class OpenCodeGoProvider {
     try { payload = await response.json() as ProviderPayload } catch {
       throw new LlmProviderError('INVALID_RESPONSE', 'The LLM provider returned invalid JSON.', null, response.status)
     }
-    const content = payload.choices?.[0]?.message?.content
+    const choice = payload.choices?.[0]
+    const content = choice?.message?.content
     if (typeof content !== 'string' || !content.trim()) {
+      if (choice?.finish_reason === 'length' && typeof choice.message?.reasoning_content === 'string' && choice.message.reasoning_content.trim()) {
+        throw new LlmProviderError('REASONING_ONLY_TRUNCATED', 'The LLM provider exhausted the output budget before returning a completion.', null, response.status)
+      }
       throw new LlmProviderError('INVALID_RESPONSE', 'The LLM provider returned no usable completion.', null, response.status)
     }
     return {
       provider: 'opencode_go',
       model: input.model,
       content,
-      finishReason: typeof payload.choices?.[0]?.finish_reason === 'string' ? payload.choices[0].finish_reason : null,
+      finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason : null,
       usage: {
         inputTokens: numberOrNull(payload.usage?.prompt_tokens),
         outputTokens: numberOrNull(payload.usage?.completion_tokens),

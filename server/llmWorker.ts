@@ -54,6 +54,7 @@ export function classifyLlmFailure(error: unknown): Failure {
     case 'PROVIDER_UNAVAILABLE':
       return { code: error.code, retryable: true, retryAfterMs: error.retryAfterMs, affectsCircuit: true }
     case 'INVALID_RESPONSE':
+    case 'REASONING_ONLY_TRUNCATED':
       return { code: error.code, retryable: false, retryAfterMs: null, affectsCircuit: false }
     case 'AUTHENTICATION_FAILED':
     case 'MODEL_UNAVAILABLE':

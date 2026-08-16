@@ -460,9 +460,15 @@ describe('cluster interpretation', () => {
       GARAXE_LLM_REQUESTS_PER_SECOND: '0.1', GARAXE_LLM_TOKEN_CAPACITY: '100', GARAXE_LLM_TOKENS_PER_SECOND: '10',
       GARAXE_LLM_GLOBAL_CONCURRENCY: '1', GARAXE_LLM_PROVIDER_CONCURRENCY: '1', GARAXE_LLM_ORGANIZATION_CONCURRENCY: '1',
       GARAXE_LLM_MAX_OUTPUT_TOKENS: '100', GARAXE_LLM_DEADLINE_MS: '1000',
+      OPENCODE_GO_PRIMARY_INPUT_USD_PER_MILLION: '0.435', OPENCODE_GO_PRIMARY_OUTPUT_USD_PER_MILLION: '0.87',
     }
     expect(clusterInterpretationPolicyFromEnv(environment)).toMatchObject({
       model: 'evaluated-model', fallbackModel: 'qwen3.7-max', budgetEnforced: false, reservationMicro: 0,
+    })
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_MAX_COMPLETION_TOKENS: '16384' })).toMatchObject({ maxOutputTokens: 16_384 })
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_MAX_COMPLETION_TOKENS: '16385' })).toBeNull()
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_DEFAULT_MODEL: 'separate-route', OPENCODE_GO_MAX_COMPLETION_TOKENS: undefined })).toMatchObject({
+      model: 'separate-route', maxOutputTokens: 100, primaryInputUsdPerMillion: 0.435, primaryOutputUsdPerMillion: 0.87,
     })
     expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_DEFAULT_MODEL: undefined })).toBeNull()
     expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_FALLBACK_MODEL: undefined })).toMatchObject({

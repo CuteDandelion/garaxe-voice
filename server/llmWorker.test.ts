@@ -118,13 +118,15 @@ describe('LlmWorkerRuntime', () => {
     expect(await queue.getJobState(created.id)).toBe('succeeded')
   })
 
-  it.each(['AUTHENTICATION_FAILED', 'MODEL_UNAVAILABLE', 'INVALID_RESPONSE'] as const)(
+  it.each(['AUTHENTICATION_FAILED', 'MODEL_UNAVAILABLE', 'INVALID_RESPONSE', 'REASONING_ONLY_TRUNCATED'] as const)(
     'does not switch models for %s', async (code) => {
       const created = await enqueue(code.repeat(4).slice(0, 64), { maxAttempts: 2 })
       const provider = { complete: vi.fn(async () => { throw new LlmProviderError(code, 'safe') }) }
       expect(await runtime(provider, { fallbackModel: 'qwen3.7-max' }).runOnce()).toMatchObject({ type: 'fallback', reason: code })
       expect(provider.complete).toHaveBeenCalledTimes(1)
       expect(await queue.getJobState(created.id)).toBe('fallback_completed')
+      const stored = await database.query<{ error: string }>(`SELECT last_error_code AS error FROM llm_jobs WHERE id=$1`, [created.id])
+      expect(stored.rows[0]?.error).toBe(code)
     },
   )
 

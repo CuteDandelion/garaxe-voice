@@ -38,6 +38,20 @@ export type WaitlistPage = {
 }
 export const listWaitlistSignups = (limit = 25, offset = 0) =>
   apiRequest<WaitlistPage>(`/api/admin/waitlist?limit=${limit}&offset=${offset}`)
+export type LocalPerformanceDiagnostics = {
+  generatedAt: string
+  window: { from: string; to: string; samplingIntervalMs: number }
+  runs: Array<{
+    runId: string; lane: 'demo' | 'authenticated'; userLabel: string; stage: string; progressPercent: number
+    timings: { parseValidateMs: number; csvSaveMs: number; queueWaitMs: number; firstEvidenceMs: number; completionMs: number; aggregationPersistMs: number }
+    queue: { queued: number; active: number; leaseState: string }
+    llm: { requests: number; retries: number; durationMs: number }
+    jobs: Array<{ jobId: string; status: string; queueWaitMs: number; progressPercent: number; retries: number; elapsedMs: number }>
+    resources: Array<{ sampledAt: string; service: string; cpuPercent: number; rssMiB: number; heapMiB?: number }>
+  }>
+  fairness: { users: number; p50FirstEvidenceMs: number; p95FirstEvidenceMs: number; completionSpreadMs: number; starvedUsers: number; comparisons: Array<{ userLabel: string; queueWaitMs: number; firstEvidenceMs: number; completionMs: number; progressPercent: number }> } | null
+}
+export const getLocalPerformanceDiagnostics = () => apiRequest<LocalPerformanceDiagnostics>('/api/_test/performance-diagnostics')
 export const bootstrapOwner = (input: { email: string; displayName: string; organizationName: string }) =>
   apiRequest<{ userId: string; organizationId: string; expiresAt: string }>('/api/auth/bootstrap', {
     method: 'POST', body: JSON.stringify(input),

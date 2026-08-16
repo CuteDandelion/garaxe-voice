@@ -21,6 +21,13 @@ async function chooseSampleCsv(fileName = 'reviews.csv') {
 describe('public routes', () => {
   afterEach(() => window.history.replaceState(null, '', '/'))
 
+  it('keeps local diagnostics absent when its build flag is off', () => {
+    window.history.replaceState(null, '', '#diagnostics')
+    render(<App />)
+    expect(screen.getByRole('heading', { name: /Turn scattered feedback into evidence/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Performance diagnostics' })).not.toBeInTheDocument()
+  })
+
   it.each(['#product', '#examples', '#resources', '#about'])('keeps %s on the single public homepage', (hash) => {
     window.history.replaceState(null, '', hash)
     render(<App />)

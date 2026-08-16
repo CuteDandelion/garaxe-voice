@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { Icon } from './components/Icon'
 import { ProjectDialog } from './components/ProjectDialog'
@@ -16,6 +16,12 @@ import { SourcesWorkspace } from './components/SourcesWorkspace'
 import { Topbar } from './components/Topbar'
 import { WaitlistAdminWorkspace } from './components/WaitlistAdminWorkspace'
 import { createAnalysisRun, createProject, getCurrentAuth, getFilteredReviewSummary, getReviewDetail, listProjects, listReviews, logout, waitForAnalysisRun, type AuthContext, type Project, type ReviewInventoryQuery, type ReviewRecord } from './lib/api'
+import { localPerformanceDiagnosticsEnabled } from './localPerformanceDiagnostics'
+
+const localPerformanceDiagnostics = localPerformanceDiagnosticsEnabled(import.meta.env, window.location.hostname)
+const LocalPerformanceDiagnosticsWorkspace = localPerformanceDiagnostics
+  ? lazy(() => import('./components/PerformanceDiagnosticsWorkspace').then((module) => ({ default: module.PerformanceDiagnosticsWorkspace })))
+  : null
 
 function inventoryItem(review: ReviewRecord): ReviewInventoryItem {
   return {
@@ -332,20 +338,21 @@ function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome
 }
 
 export function App() {
-  const initialView = window.location.hash === '#demo' ? 'demo' : window.location.hash === '#login' || window.location.search.includes('google=connected') ? 'login' : 'home'
-  const [view, setView] = useState<'home' | 'demo' | 'login'>(initialView)
+  const initialView = window.location.hash === '#demo' ? 'demo' : window.location.hash === '#login' || window.location.search.includes('google=connected') ? 'login' : window.location.hash === '#diagnostics' && LocalPerformanceDiagnosticsWorkspace ? 'diagnostics' : 'home'
+  const [view, setView] = useState<'home' | 'demo' | 'login' | 'diagnostics'>(initialView)
   const navigate = (next: 'home' | 'demo' | 'login') => {
     window.history.replaceState(null, '', next === 'home' ? window.location.pathname : `#${next}`)
     setView(next)
   }
 
   useEffect(() => {
-    const onHashChange = () => setView(window.location.hash === '#demo' ? 'demo' : window.location.hash === '#login' ? 'login' : 'home')
+    const onHashChange = () => setView(window.location.hash === '#demo' ? 'demo' : window.location.hash === '#login' ? 'login' : window.location.hash === '#diagnostics' && LocalPerformanceDiagnosticsWorkspace ? 'diagnostics' : 'home')
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
   if (view === 'home') return <PublicLanding onLogin={() => navigate('login')} onDemo={() => navigate('demo')} />
   if (view === 'demo') return <PublicDemo onBack={() => navigate('home')} onLogin={() => navigate('login')} />
+  if (view === 'diagnostics' && LocalPerformanceDiagnosticsWorkspace) return <Suspense fallback={<p role="status">Loading local diagnostics…</p>}><LocalPerformanceDiagnosticsWorkspace /></Suspense>
   return <AuthGate>{(onSignedOut) => <WorkspaceApp onSignedOut={onSignedOut} onHome={() => navigate('home')} />}</AuthGate>
 }

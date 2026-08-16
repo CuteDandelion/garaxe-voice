@@ -18,4 +18,27 @@ describe('cluster worker runtime', () => {
     expect(runOnce).toHaveBeenCalledTimes(2)
     expect(settle.mock.calls.map(([database]) => database)).toEqual(expect.arrayContaining([authenticated, demo]))
   })
+
+  it('runs bounded worker slots but never overlaps settle cycles for one database', async () => {
+    const database = { name: 'authenticated' } as unknown as Database
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => { release = resolve })
+    const runOnce = vi.fn(async () => blocked)
+    const settle = vi.fn(async () => undefined)
+    const [poll] = await createClusterWorkerPolls([database], async () => ({ runOnce }), settle, 2)
+
+    const first = poll()
+    const overlapping = poll()
+    await vi.waitFor(() => expect(runOnce).toHaveBeenCalledTimes(2))
+    expect(settle).not.toHaveBeenCalled()
+
+    release()
+    await Promise.all([first, overlapping])
+    expect(runOnce).toHaveBeenCalledTimes(2)
+    expect(settle).toHaveBeenCalledTimes(1)
+
+    await poll()
+    expect(runOnce).toHaveBeenCalledTimes(4)
+    expect(settle).toHaveBeenCalledTimes(2)
+  })
 })

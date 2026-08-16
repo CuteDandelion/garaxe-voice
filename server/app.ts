@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { DemoQuotaTestControl } from './testing/demoQuotaControl'
 import { getDatabase, getDemoDatabase } from './db'
 import { createImportJob, processImportJob } from './importProcessor'
 import { decodeCursor, getReviewDetail, listReviews, summarizeReviews, type ReviewInventoryFilters } from './reviewInventory'
@@ -68,6 +69,7 @@ import {
 } from './auth'
 import { isWaitlistAdmin, listWaitlistSignups } from './waitlistAdmin'
 import { AdmissionError, withOrganizationJobAdmission } from './admission'
+import { collectLocalPerformanceDiagnostics, sanitizePerformanceDiagnostics } from './performanceDiagnostics'
 
 function json(response: ServerResponse, status: number, payload: unknown) {
   response.writeHead(status, {
@@ -192,25 +194,58 @@ function inventoryFilters(url: URL): ReviewInventoryFilters {
 export async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  dependencies: { verifyClaims?: VerifyAuthClaims } = {},
+  dependencies: { verifyClaims?: VerifyAuthClaims; demoQuotaControl?: DemoQuotaTestControl; performanceDiagnostics?: () => Promise<unknown> } = {},
 ) {
   const url = new URL(request.url || '/', 'http://localhost')
+  const demoQuotaControl = process.env.NODE_ENV === 'production' ? undefined : dependencies.demoQuotaControl
+  const demoNow = () => demoQuotaControl?.now() ?? new Date()
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/live') {
       return json(response, 200, { status: 'alive' })
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/_test/demo-quota-clock') {
+      const suppliedToken = String(request.headers['x-voice-lab-test-control'] || '')
+      if (!demoQuotaControl || !secretMatches(suppliedToken, demoQuotaControl.token)) {
+        return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
+      }
+      const input = await body(request)
+      const advanceMs = Number(input.advanceMs)
+      if (!Number.isSafeInteger(advanceMs) || advanceMs < 1 || advanceMs > 24 * 60 * 60 * 1_000) {
+        return json(response, 400, { error: { code: 'TEST_CLOCK_INVALID', message: 'Advance must be between one millisecond and 24 hours.' } })
+      }
+      return json(response, 200, { data: { now: demoQuotaControl.advance(advanceMs).toISOString() } })
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/_test/performance-diagnostics') {
+      const address = request.socket.remoteAddress || ''
+      const loopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+      if (process.env.NODE_ENV === 'production' || process.env.GARAXE_LOCAL_PERFORMANCE_DIAGNOSTICS !== 'true' || !loopback) {
+        return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Route not found.' } })
+      }
+      const database = await getDatabase()
+      const diagnostics = dependencies.performanceDiagnostics
+        ? await dependencies.performanceDiagnostics()
+        : await collectLocalPerformanceDiagnostics([
+          { database, lane: 'authenticated' },
+          { database: await getDemoDatabase(), lane: 'demo' },
+        ])
+      return json(response, 200, { data: sanitizePerformanceDiagnostics(diagnostics) })
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/demo/analysis-runs') {
       const database = await getDemoDatabase()
       const input = await body(request)
-      const session = await createDemoAnalysisSession(database, { fileName: input.fileName, rawCsv: input.rawCsv, mapping: input.mapping, clientKey: demoClientKey(request) })
+      const now = demoNow()
+      const session = await createDemoAnalysisSession(database, { fileName: input.fileName, rawCsv: input.rawCsv, mapping: input.mapping, clientKey: demoClientKey(request) }, process.env, now)
       setImmediate(() => void processAnalysisRun(database, session.analysisRunId))
-      const status = await getDemoAnalysisSession(database, session.token)
+      const status = await getDemoAnalysisSession(database, session.token, now)
       return json(response, 202, { data: {
         token: session.token, status: 'queued', stage: 'queued', demo: true,
         createdAt: session.createdAt, expiresAt: session.expiresAt, retentionHours: 24,
-        maxRecords: DEMO_MAX_REVIEWS, allowance: DEMO_COMMENT_ALLOWANCE, quota: status?.quota,
+        maxRecords: DEMO_MAX_REVIEWS, allowance: DEMO_COMMENT_ALLOWANCE, addedRecords: session.addedRecords,
+        duplicateRecords: session.duplicateRecords, notImportedRecords: session.notImportedRecords, quota: status?.quota,
       } })
     }
 
@@ -218,19 +253,20 @@ export async function handleRequest(
     if (request.method === 'POST' && demoImportMatch) {
       const database = await getDemoDatabase()
       const input = await body(request)
-      const result = await appendDemoAnalysisSessionCsv(database, demoImportMatch[1], input)
+      const result = await appendDemoAnalysisSessionCsv(database, demoImportMatch[1], input, process.env, demoNow())
       if (result.addedRecords > 0) setImmediate(() => void processAnalysisRun(database, result.analysisRunId))
       return json(response, result.addedRecords > 0 ? 202 : 200, { data: {
         token: demoImportMatch[1], status: result.addedRecords > 0 ? 'queued' : 'completed',
         stage: result.addedRecords > 0 ? 'queued' : 'completed', demo: true,
-        addedRecords: result.addedRecords, expiresAt: result.expiresAt, quota: result.quota,
+        addedRecords: result.addedRecords, duplicateRecords: result.duplicateRecords,
+        notImportedRecords: result.notImportedRecords, expiresAt: result.expiresAt, quota: result.quota,
       } })
     }
 
     const demoRunMatch = url.pathname.match(/^\/api\/demo\/analysis-runs\/([A-Za-z0-9_-]{43})$/)
     if (request.method === 'GET' && demoRunMatch) {
       const database = await getDemoDatabase()
-      const session = await getDemoAnalysisSession(database, demoRunMatch[1])
+      const session = await getDemoAnalysisSession(database, demoRunMatch[1], demoNow())
       if (!session) return json(response, 404, { error: { code: 'DEMO_SESSION_NOT_FOUND', message: 'The demo session was not found or has expired.' } })
       if (session.status === 'failed') return json(response, 200, { data: {
         status: 'failed', stage: 'failed', demo: true, expiresAt: session.expiresAt,

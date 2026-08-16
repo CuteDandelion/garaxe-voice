@@ -14,7 +14,8 @@ const demoCleanupTimer = setInterval(() => void cleanupExpiredDemoAnalysisSessio
   console.error('Temporary demo expiry sweep failed.')
 }), 60_000)
 demoCleanupTimer.unref()
-const workerTimers = (await createClusterWorkerPolls([database, demoDatabase])).map((run) => {
+const workerConcurrency = Math.max(1, Math.min(5, Number(process.env.GARAXE_LLM_PROVIDER_CONCURRENCY || 2)))
+const workerTimers = (await createClusterWorkerPolls([database, demoDatabase], undefined, undefined, workerConcurrency)).map((run) => {
   const poll = () => void run().catch((error: unknown) => {
     const reason = error instanceof Error ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 240) : 'UNKNOWN_WORKER_ERROR'
     console.error(`Cluster interpretation worker iteration failed: ${reason}`)

@@ -12,8 +12,8 @@ export { DEMO_COMMENT_ALLOWANCE }
 export const DEMO_RETENTION_MS = 24 * 60 * 60 * 1_000
 export const DEMO_MAX_STARTS_PER_HOUR = 20
 export const DEMO_MAX_INPUT_BYTES = 16 * 1024
-export const DEMO_MIN_REVIEWS = 6
-export const DEMO_MAX_REVIEWS = 10
+export const DEMO_MIN_REVIEWS = 1
+export const DEMO_MAX_REVIEWS = DEMO_COMMENT_ALLOWANCE
 export const DEMO_QUOTA_COOLDOWN_MS = 8 * 60 * 60 * 1_000
 export const DEMO_MAX_CURATION_ACTIONS = 50
 export const DEMO_DEFAULT_CLIENT_STARTS_PER_HOUR = 3
@@ -63,6 +63,8 @@ export type DemoAnalysisSession = {
   expiresAt: string
 }
 
+type DemoImportSummary = { addedRecords: number; duplicateRecords: number; notImportedRecords: number }
+
 export type DemoAnalysisStatus = Omit<DemoAnalysisSession, 'token'> & {
   status: string
   stage: string
@@ -93,7 +95,8 @@ function parseDemoCsv(input: { fileName?: unknown; rawCsv?: unknown; mapping?: u
     if (!preflight.valid) throw new DemoAnalysisError('DEMO_INPUT_INVALID', [...preflight.columnErrors, ...preflight.rowErrors].map((item) => item.message).join(' '), 400)
     if (parsed.rows.length < minRows || parsed.rows.length > maxRows
       || parsed.rows.some((row) => { const text = demoMappedValue(row, mapping, 'review_text') || ''; return text.length < 20 || text.length > 1_000 })) {
-      throw new DemoAnalysisError('DEMO_INPUT_INVALID', `Provide ${minRows} to ${maxRows} CSV rows, each with 20 to 1,000 characters of comment text.`, 400)
+      const rowRange = Number.isFinite(maxRows) ? `${minRows} to ${maxRows} CSV rows` : `at least ${minRows} CSV row`
+      throw new DemoAnalysisError('DEMO_INPUT_INVALID', `Provide ${rowRange}, each with 20 to 1,000 characters of comment text.`, 400)
     }
     return { ...parsed, mapping, fileName: input.fileName, rawCsv: input.rawCsv }
   } catch (error) {
@@ -102,7 +105,7 @@ function parseDemoCsv(input: { fileName?: unknown; rawCsv?: unknown; mapping?: u
   }
 }
 
-async function storeDemoCsv(transaction: DatabaseClient, projectId: string, imported: ReturnType<typeof parseDemoCsv>, createdAt: string) {
+async function storeDemoCsv(transaction: DatabaseClient, projectId: string, imported: ReturnType<typeof parseDemoCsv>, createdAt: string, capacity = DEMO_COMMENT_ALLOWANCE) {
   const importJobId = randomUUID()
   await transaction.query(
     `INSERT INTO import_jobs
@@ -113,9 +116,16 @@ async function storeDemoCsv(transaction: DatabaseClient, projectId: string, impo
   )
   const seenExternalIds = new Set<string>()
   let addedRecords = 0
+  let duplicateRecords = 0
+  let notImportedRecords = 0
   for (const [index, row] of imported.rows.entries()) {
     const validation = validateImportRow(row, imported.mapping)
     if (!validation.valid) throw new DemoAnalysisError('DEMO_INPUT_INVALID', 'The CSV changed after validation.', 400)
+    if (seenExternalIds.has(validation.externalId)) { duplicateRecords += 1; continue }
+    seenExternalIds.add(validation.externalId)
+    const existing = await transaction.query('SELECT 1 FROM reviews WHERE project_id = $1 AND external_review_id = $2 LIMIT 1', [projectId, validation.externalId])
+    if (existing.rows[0]) { duplicateRecords += 1; continue }
+    if (addedRecords >= capacity) { notImportedRecords += 1; continue }
     const sourceRecordId = randomUUID()
     const payload = { ...row, demo: true, row: index + 2 }
     await transaction.query(
@@ -124,29 +134,27 @@ async function storeDemoCsv(transaction: DatabaseClient, projectId: string, impo
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [sourceRecordId, importJobId, projectId, index + 2, JSON.stringify(payload), digest(JSON.stringify(payload)), createdAt],
     )
-    if (seenExternalIds.has(validation.externalId)) continue
-    seenExternalIds.add(validation.externalId)
-    const existing = await transaction.query('SELECT 1 FROM reviews WHERE project_id = $1 AND external_review_id = $2 LIMIT 1', [projectId, validation.externalId])
-    if (existing.rows[0]) continue
     const reviewText = validation.text
     const inserted = await transaction.query(
       `INSERT INTO reviews
-        (id, project_id, source_record_id, external_review_id, provider, entity_name, rating_value,
+        (id, project_id, source_record_id, external_review_id, provider, entity_name, rating_value, rating_scale,
          body_original, language, source_created_at, canonical_hash, metadata, imported_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8, 5),$9,$10,$11,$12,$13,$14)
        ON CONFLICT (project_id, canonical_hash) DO NOTHING RETURNING id`,
       [randomUUID(), projectId, sourceRecordId, validation.externalId, validation.source,
-        demoMappedValue(row, imported.mapping, 'entity'), validation.rating, reviewText,
-        demoMappedValue(row, imported.mapping, 'language'), validation.reviewDate || null,
+        demoMappedValue(row, imported.mapping, 'entity'), validation.rating, validation.ratingScale, reviewText,
+        demoMappedValue(row, imported.mapping, 'language'), validation.reviewDate && /^\d{4}-\d{2}-\d{2}$/.test(validation.reviewDate)
+          ? `${validation.reviewDate}T00:00:00Z` : validation.reviewDate || null,
         digest(`${validation.externalId}\0${reviewText}`), JSON.stringify({ demo: true }), createdAt],
     )
     if (inserted.rows[0]) addedRecords += 1
+    else duplicateRecords += 1
   }
   await transaction.query(
     `UPDATE import_jobs SET usable_rows = $2, written_rows = $2, duplicate_rows = $3 WHERE id = $1`,
-    [importJobId, addedRecords, imported.rows.length - addedRecords],
+    [importJobId, addedRecords, duplicateRecords],
   )
-  return addedRecords
+  return { addedRecords, duplicateRecords, notImportedRecords }
 }
 
 async function demoQuota(database: DatabaseClient, projectId: string, now: Date): Promise<DemoQuota> {
@@ -167,8 +175,8 @@ export async function createDemoAnalysisSession(
   input: { fileName?: unknown; rawCsv?: unknown; mapping?: unknown; clientKey?: string },
   environment: NodeJS.ProcessEnv = process.env,
   now = new Date(),
-): Promise<DemoAnalysisSession> {
-  const imported = parseDemoCsv(input)
+): Promise<DemoAnalysisSession & DemoImportSummary> {
+  const imported = parseDemoCsv(input, DEMO_MIN_REVIEWS, Number.POSITIVE_INFINITY)
   if (!clusterInterpretationPolicyFromEnv(environment)) {
     throw new DemoAnalysisError('DEMO_ANALYSIS_UNAVAILABLE', 'Voice Map intelligence is not available right now.', 503)
   }
@@ -190,6 +198,7 @@ export async function createDemoAnalysisSession(
   const createdAt = now.toISOString()
   const expiresAt = new Date(now.getTime() + DEMO_RETENTION_MS).toISOString()
 
+  let importSummary = { addedRecords: 0, duplicateRecords: 0, notImportedRecords: 0 }
   await database.transaction(async (transaction) => {
     await transaction.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['voice-lab-demo-admission'])
     const limits = await transaction.query<{ recent: number; clientRecent: number; active: number; clientActive: number }>(
@@ -221,7 +230,7 @@ export async function createDemoAnalysisSession(
     await transaction.query('INSERT INTO organizations (id, name, created_at) VALUES ($1,$2,$3)', [organizationId, 'Voice Map temporary demo', createdAt])
     await transaction.query('INSERT INTO projects (id, name, primary_decision, created_at) VALUES ($1,$2,$3,$4)', [projectId, 'Temporary Voice Map demo', 'sample analysis', createdAt])
     await transaction.query('INSERT INTO project_organizations (project_id, organization_id, created_at) VALUES ($1,$2,$3)', [projectId, organizationId, createdAt])
-    await storeDemoCsv(transaction, projectId, imported, createdAt)
+    importSummary = await storeDemoCsv(transaction, projectId, imported, createdAt)
     await transaction.query(
       `INSERT INTO analysis_runs
         (id, project_id, objective, configuration, status, stage, pipeline_version, created_at)
@@ -235,7 +244,7 @@ export async function createDemoAnalysisSession(
       [sessionId, digest(token), organizationId, projectId, analysisRunId, clientKey, createdAt, expiresAt],
     )
   })
-  return { id: sessionId, token, organizationId, projectId, analysisRunId, createdAt, expiresAt }
+  return { id: sessionId, token, organizationId, projectId, analysisRunId, createdAt, expiresAt, ...importSummary }
 }
 
 export async function appendDemoAnalysisSessionCsv(
@@ -245,7 +254,7 @@ export async function appendDemoAnalysisSessionCsv(
   environment: NodeJS.ProcessEnv = process.env,
   now = new Date(),
 ) {
-  const imported = parseDemoCsv(input, 1, DEMO_COMMENT_ALLOWANCE)
+  const imported = parseDemoCsv(input, 1, Number.POSITIVE_INFINITY)
   if (!clusterInterpretationPolicyFromEnv(environment)) throw new DemoAnalysisError('DEMO_ANALYSIS_UNAVAILABLE', 'Voice Map intelligence is not available right now.', 503)
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new DemoAnalysisError('DEMO_SESSION_NOT_FOUND', 'The demo session was not found or has expired.', 404)
   return database.transaction(async (transaction) => {
@@ -260,20 +269,15 @@ export async function appendDemoAnalysisSessionCsv(
     if (!current) throw new DemoAnalysisError('DEMO_SESSION_NOT_FOUND', 'The demo session was not found or has expired.', 404)
     if (current.status !== 'completed') throw new DemoAnalysisError('DEMO_ANALYSIS_ACTIVE', 'Wait for the current demo analysis to finish before adding another CSV.', 409)
     const quotaBefore = await demoQuota(transaction, current.projectId, now)
-    const projectCount = await transaction.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM reviews WHERE project_id = $1', [current.projectId])
-    const addedRecords = await storeDemoCsv(transaction, current.projectId, imported, now.toISOString())
-    if (addedRecords === 0) return { ...current, token, addedRecords, quota: quotaBefore }
-    if (Number(projectCount.rows[0]?.count || 0) >= DEMO_COMMENT_ALLOWANCE && quotaBefore.freshDemoAvailable) {
-      throw new DemoAnalysisError('DEMO_SESSION_EXHAUSTED', 'This temporary demo is complete. Start a new demo for the next allowance.', 409)
-    }
-    if (addedRecords > quotaBefore.remaining) {
-      throw new DemoAnalysisError('DEMO_CAPACITY_EXCEEDED', quotaBefore.resetAt
-        ? `This demo reached ${DEMO_COMMENT_ALLOWANCE} accepted comments. More can be added after ${quotaBefore.resetAt}.`
-        : `This CSV has ${addedRecords} new comments, but only ${quotaBefore.remaining} remain in the current demo allowance.`, 429)
+    const importSummary = await storeDemoCsv(transaction, current.projectId, imported, now.toISOString(), quotaBefore.remaining)
+    if (importSummary.addedRecords === 0) {
+      if (!importSummary.notImportedRecords) return { ...current, token, ...importSummary, quota: quotaBefore }
+      if (quotaBefore.freshDemoAvailable) throw new DemoAnalysisError('DEMO_SESSION_EXHAUSTED', 'This temporary demo is complete. Start a new demo for the next allowance.', 409)
+      throw new DemoAnalysisError('DEMO_CAPACITY_EXCEEDED', `This demo reached ${DEMO_COMMENT_ALLOWANCE} accepted comments. More can be added after ${quotaBefore.resetAt}.`, 429)
     }
     const run = await createAnalysisRun(transaction, current.projectId, configuration)
     await transaction.query('UPDATE demo_analysis_sessions SET analysis_run_id = $2 WHERE id = $1', [current.id, run.id])
-    return { ...current, token, analysisRunId: run.id, addedRecords, quota: await demoQuota(transaction, current.projectId, now) }
+    return { ...current, token, analysisRunId: run.id, ...importSummary, quota: await demoQuota(transaction, current.projectId, now) }
   })
 }
 
@@ -339,6 +343,7 @@ export function publicDemoCurationProjection(projection: CurationProjection): Cu
 export type AnalysisCoverageItem = {
   reviewId: string
   originalText: string
+  source: { provider: string; entity: string | null; rating: number | null; ratingScale: number | null; language: string | null; sourceCreatedAt: string | null; sourceUrl: string | null }
   disposition: 'recurring' | 'emerging' | 'user_curated' | 'error' | 'excluded'
   reason: string
   themeIds: string[]
@@ -362,9 +367,10 @@ export function actionableCategories(signalTypes: string[], evidence = '') {
   return [dominantActionableCategory(normalized, evidence)]
 }
 
-export function dominantCoverageSignals<T extends { interpretedBy: 'analysis_engine' | 'deterministic' }>(signals: T[]) {
+export function dominantCoverageSignals<T extends { interpretedBy: 'analysis_engine' | 'deterministic' }>(signals: T[], aspectMode = false) {
   const interpreted = signals.filter((signal) => signal.interpretedBy === 'analysis_engine')
-  return (interpreted.length ? interpreted : signals).slice(0, 1)
+  const selected = interpreted.length ? interpreted : signals
+  return aspectMode ? selected : selected.slice(0, 1)
 }
 
 function interpretedSignalTypes(value: unknown) {
@@ -374,8 +380,15 @@ function interpretedSignalTypes(value: unknown) {
 }
 
 export async function getAnalysisCoverage(database: Database, runId: string): Promise<AnalysisCoverageItem[]> {
-  const reviews = await database.query<{ reviewId: string; originalText: string; inclusionStatus: string; exclusionReason: string | null }>(
-    `SELECT arr.review_id AS "reviewId", COALESCE(r.body_original, '') AS "originalText", arr.inclusion_status AS "inclusionStatus", arr.exclusion_reason AS "exclusionReason"
+  const run = await database.query<{ aspectSemantics: boolean }>(
+    `SELECT COALESCE((quality_report->'categoryFirstProjection'->>'aspectSemantics')::boolean, false) AS "aspectSemantics"
+     FROM analysis_runs WHERE id = $1`, [runId],
+  )
+  const aspectMode = run.rows[0]?.aspectSemantics === true
+  const reviews = await database.query<{ reviewId: string; originalText: string; inclusionStatus: string; exclusionReason: string | null; provider: string; entity: string | null; rating: number | null; ratingScale: number | null; language: string | null; sourceCreatedAt: string | null; sourceUrl: string | null }>(
+    `SELECT arr.review_id AS "reviewId", COALESCE(r.body_original, '') AS "originalText", arr.inclusion_status AS "inclusionStatus", arr.exclusion_reason AS "exclusionReason",
+      r.provider, r.entity_name AS entity, r.rating_value AS rating, r.rating_scale AS "ratingScale", r.language,
+      r.source_created_at AS "sourceCreatedAt", r.source_url AS "sourceUrl"
      FROM analysis_run_reviews arr JOIN reviews r ON r.id = arr.review_id WHERE arr.analysis_run_id = $1 ORDER BY r.imported_at, r.id`, [runId],
   )
   const signals = await database.query<{ id: string; reviewId: string; label: string; signalType: string; confidence: number; quote: string; attributes: Record<string, unknown>; interpretedBy: 'analysis_engine' | 'deterministic' }>(
@@ -392,7 +405,8 @@ export async function getAnalysisCoverage(database: Database, runId: string): Pr
   for (const signal of signals.rows) signalsByReview.set(signal.reviewId, [...(signalsByReview.get(signal.reviewId) || []), signal])
   const curatedThemes = (await getCurationProjection(database, runId)).effectiveThemes.filter((theme) => theme.origin === 'user_curated' && theme.status !== 'consumed')
   return reviews.rows.map((review) => {
-    const reviewSignals = dominantCoverageSignals(signalsByReview.get(review.reviewId) || [])
+    const source = { provider: review.provider, entity: review.entity, rating: review.rating, ratingScale: review.ratingScale, language: review.language, sourceCreatedAt: review.sourceCreatedAt, sourceUrl: review.sourceUrl }
+    const reviewSignals = dominantCoverageSignals(signalsByReview.get(review.reviewId) || [], aspectMode)
     const categorizedSignals = reviewSignals.map(({ attributes, id, ...signal }) => {
       const linkedInterpretation = evidence.rows.find((item) => item.signalId === id)?.validation?.interpretationCandidate
       const persistedOutcome = attributes.canonicalOutcome || attributes.emergingInterpretation
@@ -412,15 +426,15 @@ export async function getAnalysisCoverage(database: Database, runId: string): Pr
         signalType: outcome?.primarySignalType || signal.signalType,
         signalTypes, categories, category: categories[0] || actionableCategory(signal.signalType) }
     })
-    if (review.inclusionStatus === 'excluded') return { reviewId: review.reviewId, originalText: review.originalText, disposition: 'excluded' as const, reason: review.exclusionReason || 'Excluded by the immutable dataset configuration.', themeIds: [], signals: [] }
+    if (review.inclusionStatus === 'excluded') return { reviewId: review.reviewId, originalText: review.originalText, source, disposition: 'excluded' as const, reason: review.exclusionReason || 'Excluded by the immutable dataset configuration.', themeIds: [], signals: [] }
     const curated = curatedThemes.filter((theme) => theme.evidence.some((item) => item.reviewId === review.reviewId))
-    if (curated.length) return { reviewId: review.reviewId, originalText: review.originalText, disposition: 'user_curated' as const, reason: 'Moved by a person during Curation.', themeIds: curated.map((theme) => theme.id), signals: categorizedSignals }
+    if (curated.length) return { reviewId: review.reviewId, originalText: review.originalText, source, disposition: 'user_curated' as const, reason: 'Moved by a person during Curation.', themeIds: curated.map((theme) => theme.id), signals: categorizedSignals }
     const linked = evidence.rows.filter((item) => item.reviewId === review.reviewId)
     const published = linked.filter((item) => isPublishableDemoTheme({ validation: item.validation }))
     const recurring = published.filter((item) => item.reviewCount >= 2)
-    if (recurring.length) return { reviewId: review.reviewId, originalText: review.originalText, disposition: 'recurring' as const, reason: 'Recurring topic supported by more than one comment.', themeIds: recurring.map((item) => item.themeId), signals: categorizedSignals }
-    if (reviewSignals.length) return { reviewId: review.reviewId, originalText: review.originalText, disposition: 'emerging' as const, reason: 'This comment has its own topic; more feedback may confirm recurrence.', themeIds: published.map((item) => item.themeId), signals: categorizedSignals }
-    return { reviewId: review.reviewId, originalText: review.originalText, disposition: 'error' as const, reason: 'This input did not contain a supported feedback claim.', themeIds: [], signals: [] }
+    if (recurring.length) return { reviewId: review.reviewId, originalText: review.originalText, source, disposition: 'recurring' as const, reason: 'Recurring topic supported by more than one comment.', themeIds: recurring.map((item) => item.themeId), signals: categorizedSignals }
+    if (reviewSignals.length) return { reviewId: review.reviewId, originalText: review.originalText, source, disposition: 'emerging' as const, reason: 'This comment has its own topic; more feedback may confirm recurrence.', themeIds: published.map((item) => item.themeId), signals: categorizedSignals }
+    return { reviewId: review.reviewId, originalText: review.originalText, source, disposition: 'error' as const, reason: 'This input did not contain a supported feedback claim.', themeIds: [], signals: [] }
   })
 }
 

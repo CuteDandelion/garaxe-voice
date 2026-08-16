@@ -39,6 +39,10 @@ describe('retained feedback actionable taxonomy', () => {
     ]
     expect(dominantCoverageSignals(signals)).toEqual([signals[1]])
     expect(dominantCoverageSignals(signals.slice(0, 1))).toEqual([signals[0]])
+    expect(dominantCoverageSignals(signals, true)).toEqual([signals[1]])
+    expect(dominantCoverageSignals([
+      signals[1], { id: 'engine-sibling', interpretedBy: 'analysis_engine' as const },
+    ], true)).toHaveLength(2)
   })
 })
 
@@ -141,6 +145,50 @@ describe('ephemeral same-engine demo sessions', () => {
     })
   })
 
+  it('stores CSV date-only values at UTC midnight like authenticated imports', async () => {
+    const database = await getDatabase()
+    const rawCsv = rowsToCsv([['review_id', 'source', 'rating', 'rating_scale', 'review_text', 'review_date'], ...Array.from({ length: 6 }, (_, index) => [
+      `dated-${index}`, 'Demo fixture', '2', '5', `A realistic dated comment ${index} with enough detail for analysis.`, '2026-01-10',
+    ])])
+    await createDemoAnalysisSession(database, { fileName: 'dated.csv', rawCsv, mapping: detectMapping(parseCsv(rawCsv).headers) }, enabledEnvironment, new Date('2026-08-10T10:00:00Z'))
+    const stored = await database.query<{ sourceCreatedAt: string | Date; ratingScale: number | null }>('SELECT source_created_at AS "sourceCreatedAt", rating_scale AS "ratingScale" FROM reviews ORDER BY id LIMIT 1')
+    expect(new Date(stored.rows[0]?.sourceCreatedAt || '').toISOString()).toBe('2026-01-10T00:00:00.000Z')
+    expect(stored.rows[0]?.ratingScale).toBe(5)
+  })
+
+  it('accepts one CSV up to the full remaining Demo allowance', async () => {
+    const database = await getDatabase()
+    const session = await createDemoAnalysisSession(
+      database,
+      { ...demoInputRange(1, 50), clientKey: 'single-file-client' },
+      enabledEnvironment,
+      new Date('2026-08-13T08:00:00Z'),
+    )
+    const stored = await database.query<{ count: number }>(
+      'SELECT COUNT(*)::int AS count FROM reviews WHERE project_id = $1',
+      [session.projectId],
+    )
+    expect(stored.rows[0]?.count).toBe(50)
+    await expect(getDemoAnalysisSession(database, session.token, new Date('2026-08-13T08:00:00Z')))
+      .resolves.toMatchObject({ quota: { remaining: 0, resetAt: '2026-08-13T16:00:00.000Z' } })
+  })
+
+  it('imports only the first 50 eligible unique rows from a larger Demo CSV and reports the remainder', async () => {
+    const database = await getDatabase()
+    const session = await createDemoAnalysisSession(
+      database,
+      { ...demoInputRange(1, 100), clientKey: 'large-file-client' },
+      enabledEnvironment,
+      new Date('2026-08-13T08:00:00Z'),
+    )
+    const stored = await database.query<{ count: number }>(
+      'SELECT COUNT(*)::int AS count FROM reviews WHERE project_id = $1',
+      [session.projectId],
+    )
+    expect(stored.rows[0]?.count).toBe(50)
+    expect(session).toMatchObject({ addedRecords: 50, notImportedRecords: 50 })
+  })
+
   it('starts an eight-hour cooldown when the 50th unique Demo comment is accepted', async () => {
     const database = await getDatabase()
     const startedAt = new Date('2026-08-13T08:00:00Z')
@@ -149,35 +197,28 @@ describe('ephemeral same-engine demo sessions', () => {
     await database.query(`UPDATE analysis_runs SET status = 'completed', stage = 'completed' WHERE id = $1`, [first.analysisRunId])
 
     await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(11, 41), enabledEnvironment, new Date('2026-08-13T08:30:00Z')))
-      .rejects.toMatchObject({ code: 'DEMO_CAPACITY_EXCEEDED', status: 429 } satisfies Partial<DemoAnalysisError>)
+      .resolves.toMatchObject({ addedRecords: 40, notImportedRecords: 1, quota: { remaining: 0 } })
     await expect(database.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM reviews WHERE project_id = $1', [first.projectId]))
-      .resolves.toMatchObject({ rows: [{ count: 10 }] })
-
-    const appended = await appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(11, 40), enabledEnvironment, new Date('2026-08-13T09:00:00Z'))
-    expect(appended).toMatchObject({
-      projectId: first.projectId,
-      addedRecords: 40,
-      quota: { remaining: 0, resetAt: '2026-08-13T17:00:00.000Z' },
-    })
-    expect(appended.analysisRunId).not.toBe(first.analysisRunId)
-    await database.query(`UPDATE analysis_runs SET status = 'completed', stage = 'completed' WHERE id = $1`, [appended.analysisRunId])
+      .resolves.toMatchObject({ rows: [{ count: 50 }] })
+    const appended = await getDemoAnalysisSession(database, first.token, new Date('2026-08-13T08:30:00Z'))
+    await database.query(`UPDATE analysis_runs SET status = 'completed', stage = 'completed' WHERE id = $1`, [appended!.analysisRunId])
 
     const retry = await appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(11, 40), enabledEnvironment, new Date('2026-08-13T09:05:00Z'))
     expect(retry).toMatchObject({
       projectId: first.projectId,
-      analysisRunId: appended.analysisRunId,
+      analysisRunId: appended!.analysisRunId,
       addedRecords: 0,
-      quota: { remaining: 0, resetAt: '2026-08-13T17:00:00.000Z' },
+      quota: { remaining: 0, resetAt: '2026-08-13T16:30:00.000Z' },
     })
-    await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(51, 1), enabledEnvironment, new Date('2026-08-13T16:59:59.999Z')))
+    await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(51, 1), enabledEnvironment, new Date('2026-08-13T16:29:59.999Z')))
       .rejects.toMatchObject({ code: 'DEMO_CAPACITY_EXCEEDED', status: 429 } satisfies Partial<DemoAnalysisError>)
-    await expect(createDemoAnalysisSession(database, { ...demoInputRange(51, 10), clientKey }, enabledEnvironment, new Date('2026-08-13T16:59:59.999Z')))
+    await expect(createDemoAnalysisSession(database, { ...demoInputRange(51, 10), clientKey }, enabledEnvironment, new Date('2026-08-13T16:29:59.999Z')))
       .rejects.toMatchObject({ code: 'DEMO_CAPACITY_EXCEEDED', status: 429 } satisfies Partial<DemoAnalysisError>)
-    await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(11, 40), enabledEnvironment, new Date('2026-08-13T17:00:00Z')))
+    await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(11, 40), enabledEnvironment, new Date('2026-08-13T16:30:00Z')))
       .resolves.toMatchObject({ addedRecords: 0, quota: { remaining: 0, resetAt: null, freshDemoAvailable: true } })
-    await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(51, 1), enabledEnvironment, new Date('2026-08-13T17:00:00Z')))
+    await expect(appendDemoAnalysisSessionCsv(database, first.token, demoInputRange(51, 1), enabledEnvironment, new Date('2026-08-13T16:30:00Z')))
       .rejects.toMatchObject({ code: 'DEMO_SESSION_EXHAUSTED', status: 409 } satisfies Partial<DemoAnalysisError>)
-    const fresh = await createDemoAnalysisSession(database, { ...demoInputRange(51, 10), clientKey }, enabledEnvironment, new Date('2026-08-13T17:00:00Z'))
+    const fresh = await createDemoAnalysisSession(database, { ...demoInputRange(51, 10), clientKey }, enabledEnvironment, new Date('2026-08-13T16:30:00Z'))
     expect(fresh.projectId).not.toBe(first.projectId)
     const counts = await database.query<{ oldReviews: number; newReviews: number; projects: number }>(
       `SELECT
@@ -186,7 +227,7 @@ describe('ephemeral same-engine demo sessions', () => {
         (SELECT COUNT(*)::int FROM projects) AS projects`, [first.projectId, fresh.projectId],
     )
     expect(counts.rows[0]).toEqual({ oldReviews: 50, newReviews: 10, projects: 2 })
-    expect(await getDemoAnalysisSession(database, first.token)).toMatchObject({ analysisRunId: appended.analysisRunId })
+    expect(await getDemoAnalysisSession(database, first.token, new Date('2026-08-13T16:30:00Z'))).toMatchObject({ analysisRunId: appended!.analysisRunId })
   })
 
   it('enforces per-client start and active-run limits before creating more demo tenants', async () => {
@@ -302,7 +343,7 @@ describe('ephemeral same-engine demo sessions', () => {
     })
   })
 
-  it('sends one dominant retained signal per comment through bounded individual interpretation', async () => {
+  it('keeps one dominant signal by default and exposes every aspect only behind the runtime flag', async () => {
     const database = await getDatabase()
     const session = await createDemoAnalysisSession(database, demoInput, enabledEnvironment)
     const review = await database.query<{ id: string; body: string }>('SELECT id, body_original AS body FROM reviews ORDER BY imported_at, id LIMIT 1')
@@ -329,6 +370,9 @@ describe('ephemeral same-engine demo sessions', () => {
     expect((await loadEmergingSignalWork(database, session.analysisRunId)).themes.map((item) => item.themeId)).toEqual([
       'clustered-signal',
     ])
+    expect((await loadEmergingSignalWork(database, session.analysisRunId, null, {
+      VOICE_LAB_ASPECT_SEMANTICS_ENABLED: 'true',
+    })).themes.map((item) => item.themeId)).toEqual(['clustered-signal', 'unclustered-signal'])
   })
 
   it('deletes source data and derived run artifacts after the fixed expiry', async () => {
@@ -348,10 +392,9 @@ describe('ephemeral same-engine demo sessions', () => {
     expect(counts.rows[0]).toEqual({ organizations: 0, projects: 0, sessions: 0 })
   })
 
-  it('enforces demo byte, review-count, and per-review limits before creating any tenant data', async () => {
+  it('enforces demo byte and per-review limits before creating any tenant data', async () => {
     const database = await getDatabase()
     await expect(createDemoAnalysisSession(database, { rawCsv: 'too short' }, enabledEnvironment)).rejects.toMatchObject({ code: 'DEMO_INPUT_INVALID', status: 400 })
-    await expect(createDemoAnalysisSession(database, demoInputFromComments(Array.from({ length: 11 }, () => 'A sufficiently detailed customer comment for analysis.')), enabledEnvironment)).rejects.toMatchObject({ code: 'DEMO_INPUT_INVALID', status: 400 })
     await expect(createDemoAnalysisSession(database, demoInputFromComments(Array.from({ length: 6 }, () => 'x'.repeat(3000))), enabledEnvironment)).rejects.toMatchObject({ code: 'DEMO_INPUT_TOO_LARGE', status: 413 })
     const counts = await database.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM demo_analysis_sessions')
     expect(counts.rows[0]?.count).toBe(0)

@@ -27,6 +27,7 @@
     "test:e2e:authenticated:independent": "VOICE_MAP_E2E_MATRIX=independent-realistic tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
     "test:e2e:authenticated:incremental": "VOICE_MAP_E2E_MATRIX=incremental tsx --env-file=.env scripts/verify-authenticated-voice-map.ts",
     "test:e2e:local-supabase-auth": "tsx --env-file=.env scripts/verify-local-supabase-auth.ts",
+    "test:performance:contract": "vitest run scripts/voice-lab-performance-contract.test.ts",
     "evaluate:semantic": "tsx server/evaluation/semanticClusterEvaluator.ts",
     "prewarm:models": "tsx scripts/prewarm-models.ts",
     "typecheck": "tsc -b --pretty false",

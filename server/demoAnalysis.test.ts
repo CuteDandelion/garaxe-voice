@@ -370,9 +370,13 @@ describe('ephemeral same-engine demo sessions', () => {
     expect((await loadEmergingSignalWork(database, session.analysisRunId)).themes.map((item) => item.themeId)).toEqual([
       'clustered-signal',
     ])
-    expect((await loadEmergingSignalWork(database, session.analysisRunId, null, {
+    const aspectWork = await loadEmergingSignalWork(database, session.analysisRunId, null, {
       VOICE_LAB_ASPECT_SEMANTICS_ENABLED: 'true',
-    })).themes.map((item) => item.themeId)).toEqual(['clustered-signal', 'unclustered-signal'])
+    })
+    expect(aspectWork.themes.map((item) => item.themeId)).toEqual(['clustered-signal'])
+    expect(aspectWork.themes[0]?.occurrences?.map((item) => item.signalId)).toEqual([
+      'clustered-signal', 'unclustered-signal',
+    ])
   })
 
   it('deletes source data and derived run artifacts after the fixed expiry', async () => {

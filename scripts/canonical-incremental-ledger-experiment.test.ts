@@ -51,10 +51,12 @@ describe('provider-free canonical incremental decision ledger', () => {
       expect(job).toMatchObject({
         starved: false,
         foreignWorkspaceRows: 0,
-        serial: { candidateLedgerCount: 187, comparisons: 1_225 },
-        concurrent: { candidateLedgerCount: 187, comparisons: 1_225 },
+        serial: { comparisons: 1_225 },
+        concurrent: { comparisons: 1_225 },
         equivalence: { exact: true, topic: true, evidence: true, provenance: true, candidateLedger: true },
       })
+      expect(job.serial.candidateLedgerCount).toBeGreaterThan(0)
+      expect(job.concurrent.candidateLedgerCount).toBe(job.serial.candidateLedgerCount)
       expect(job.progress.map((event) => event.value)).toEqual([0, 20, 70, 100])
       expect(job.progress.every((event, index) => index === 0 || event.value >= job.progress[index - 1].value)).toBe(true)
       expect(job.queueWaitMs).toBeLessThanOrEqual(result.guard.maxQueueWaitMs)
@@ -161,13 +163,20 @@ describe('provider-free canonical incremental decision ledger', () => {
     const result = await runCanonicalIncrementalLedgerExperiment([[20], [10, 10], [5, 5, 10]])
 
     expect(result.dataset).toEqual({ initialReviews: 10, appendedReviews: 20, totalReviews: 30 })
-    expect(result.full).toMatchObject({ candidateLedgerCount: 65, adjudicatedPairs: 65, requestEquivalents: 13 })
-    expect(result.incrementalBaseline).toMatchObject({ initialLedgerCount: 6, unseenAdjudications: 59, coalescedRequestEquivalents: 12 })
+    expect(result.full.candidateLedgerCount).toBeGreaterThan(0)
+    expect(result.full.adjudicatedPairs).toBe(result.full.candidateLedgerCount)
+    expect(result.full.requestEquivalents).toBe(Math.ceil(result.full.candidateLedgerCount / 5))
+    expect(result.incrementalBaseline.unseenAdjudications).toBe(
+      result.full.candidateLedgerCount - result.incrementalBaseline.initialLedgerCount,
+    )
+    expect(result.incrementalBaseline.coalescedRequestEquivalents).toBe(
+      Math.ceil(result.incrementalBaseline.unseenAdjudications / 5),
+    )
     expect(result.providerCalls).toBe(0)
     expect(result.partitions).toHaveLength(3)
     for (const partition of result.partitions) {
-      expect(partition.candidateLedgerCount).toBe(65)
-      expect(partition.unseenAdjudications).toBe(59)
+      expect(partition.candidateLedgerCount).toBe(result.full.candidateLedgerCount)
+      expect(partition.unseenAdjudications).toBe(result.incrementalBaseline.unseenAdjudications)
       expect(partition.deltaComparisons).toBe(390)
       expect(partition.totalComparisons).toBe(435)
       expect(partition.maxAdjudicationsPerPair).toBe(1)
@@ -176,6 +185,48 @@ describe('provider-free canonical incremental decision ledger', () => {
         exact: true, topic: true, evidence: true, provenance: true, candidateLedger: true,
       })
     }
+  }, 30_000)
+
+  it('derives the live plan from the active embedding geometry instead of fixed candidate counts', async () => {
+    const vectors = new Map<string, number[]>()
+    let embedCalls = 0
+    const result = await runLiveCanonicalLedgerExperiment({
+      embeddingProvider: {
+        id: 'test-one-hot',
+        version: 'test-one-hot-v1',
+        dimensions: 64,
+        embed: async (texts) => texts.map((text) => {
+          embedCalls += 1
+          let vector = vectors.get(text)
+          if (!vector) {
+            vector = Array.from({ length: 64 }, (_, index) => index === vectors.size ? 1 : 0)
+            vectors.set(text, vector)
+          }
+          return [...vector]
+        }),
+      },
+      completionProvider: {
+        complete: async (input) => {
+          const pairs = JSON.parse(input.messages[1].content).pairs
+          return {
+            provider: 'opencode_go' as const,
+            model: input.model,
+            content: JSON.stringify({ decisions: pairs.map((pair: any) => ({
+              pairId: pair.pairId, sameTopic: pair.left.topic === pair.right.topic,
+            })) }),
+            finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, requestId: null,
+          }
+        },
+      },
+      model: 'test-model',
+      maxTokens: 1_000,
+    })
+
+    expect(embedCalls).toBeGreaterThan(0)
+    expect(result).toMatchObject({
+      aborted: false,
+      equivalence: { exact: true, topic: true, evidence: true, provenance: true, candidateLedger: true },
+    })
   }, 30_000)
 
   it('adjudicates unseen canonical pairs once and replays one immutable live ledger', async () => {
@@ -205,10 +256,12 @@ describe('provider-free canonical incremental decision ledger', () => {
     expect(peakActive).toBe(1)
     expect(result).toMatchObject({
       aborted: false,
-      decisions: { initialSaved: 6, newlyAdjudicated: 59, total: 65 },
-      provider: { calls: 12, retries: 0 },
+      provider: { retries: 0 },
       equivalence: { exact: true, topic: true, evidence: true, provenance: true, candidateLedger: true },
     })
+    expect(result.decisions.total).toBe(result.decisions.initialSaved + result.decisions.newlyAdjudicated)
+    expect(result.provider.plannedCalls).toBe(Math.ceil(result.decisions.newlyAdjudicated / 5))
+    expect(result.provider.calls).toBe(result.provider.plannedCalls)
   }, 30_000)
 
   it('preserves partial diagnostics and cleanup state when the provider fails', async () => {
@@ -235,12 +288,13 @@ describe('provider-free canonical incremental decision ledger', () => {
       aborted: true,
       abortReason: 'PROVIDER_FAILED',
       provider: {
-        plannedCalls: 12, callsAttempted: 3, callsCompleted: 2, retries: 0,
+        callsAttempted: 3, callsCompleted: 2, retries: 0,
         terminal: { state: 'failed', code: 'PROVIDER_UNAVAILABLE', status: 503, retryAfterMs: null },
       },
       cleanup: { fullProjection: 'not_created', incrementalProjection: 'not_created' },
       equivalence: { evaluated: false },
     })
+    expect(result.provider.plannedCalls).toBeGreaterThanOrEqual(result.provider.callsAttempted)
     expect(result.provider.perCall).toHaveLength(3)
     expect(result.provider.perCall.map((call) => call.status)).toEqual(['succeeded', 'succeeded', 'failed'])
     expect(result.provider.perCall.every((call) => call.modelDurationMs >= 0 && call.queueWaitMs >= 0)).toBe(true)

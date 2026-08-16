@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { freemem } from 'node:os'
 import { performance } from 'node:perf_hooks'
 import { PGlite } from '@electric-sql/pglite'
-import { createOnnxEmbeddingProvider } from '../server/semanticAnalysis'
+import { createOnnxEmbeddingProvider, type EmbeddingProvider } from '../server/semanticAnalysis'
 import { buildPairAdjudicationMessages, clusterInterpretationPolicyFromEnv, validatePairAdjudications, type PairAdjudicationCandidate } from '../server/clusterInterpretation'
 import { LlmProviderError, openCodeGoProviderFromEnv } from '../server/llmProvider'
 import {
@@ -643,6 +643,7 @@ export async function runProviderFreeFairnessExperiment(options: {
 }
 
 export async function runLiveCanonicalLedgerExperiment(options: {
+  embeddingProvider?: EmbeddingProvider
   completionProvider?: CompletionProvider
   model?: string
   maxTokens?: number
@@ -655,7 +656,7 @@ export async function runLiveCanonicalLedgerExperiment(options: {
 
   const data = incrementalExperimentFixture()
   const raw = [...data.initial, ...data.appended]
-  const embeddingProvider = await createOnnxEmbeddingProvider()
+  const embeddingProvider = options.embeddingProvider || await createOnnxEmbeddingProvider()
   const cache = new Map<string, number[]>()
   const reviews = withEmbeddings(raw, await canonicalEmbeddings(embeddingProvider, cache, raw.map((review) => review.text)))
   const initial = reviews.slice(0, 10)
@@ -666,8 +667,9 @@ export async function runLiveCanonicalLedgerExperiment(options: {
   await fullAnalysis(initial, oracle, initialPairIds)
   await fullAnalysis(reviews, oracle, fullPairIds)
   const initialIds = new Set(initialPairIds)
-  const unseenPairIds = [...new Set(fullPairIds)].filter((pairId) => !initialIds.has(pairId)).sort()
-  if (initialIds.size !== 6 || unseenPairIds.length !== 59) throw new Error('LIVE_CANONICAL_LEDGER_PLAN_DRIFT')
+  const fullIds = new Set(fullPairIds)
+  if ([...initialIds].some((pairId) => !fullIds.has(pairId))) throw new Error('LIVE_CANONICAL_LEDGER_PLAN_DRIFT')
+  const unseenPairIds = [...fullIds].filter((pairId) => !initialIds.has(pairId)).sort()
 
   const providerStarted = performance.now()
   const provider = await measured(() => diagnosticDecisions(

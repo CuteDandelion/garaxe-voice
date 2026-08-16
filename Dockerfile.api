@@ -7,6 +7,7 @@ RUN npm ci
 COPY tsconfig.json tsconfig.server.json ./
 COPY server ./server
 COPY src/lib/csv.ts ./src/lib/csv.ts
+COPY src/lib/sourceUrl.ts ./src/lib/sourceUrl.ts
 COPY scripts/prewarm-models.ts ./scripts/prewarm-models.ts
 
 RUN npm run build:server

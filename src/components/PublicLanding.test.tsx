@@ -230,6 +230,21 @@ describe('PublicLanding', () => {
     expect(screen.getByText(/CSV can contain more rows/i)).toHaveTextContent(/additional CSVs append/i)
   })
 
+  it('keeps the full 50-record allowance available before the first Demo import', async () => {
+    const csv = rowsToCsv([['review_id', 'source', 'rating', 'rating_scale', 'review_text'], ...Array.from({ length: 30 }, (_, index) => [
+      `initial-${index + 1}`, 'Initial source', '4', '5',
+      `Customer feedback ${index + 1} contains enough distinct detail for the Voice Lab analysis.`,
+    ])])
+    render(<PublicDemo onBack={vi.fn()} onLogin={vi.fn()} />)
+
+    const file = new File([csv], 'initial-30.csv', { type: 'text/csv' })
+    if (!file.text) Object.defineProperty(file, 'text', { value: async () => csv })
+    fireEvent.change(screen.getByLabelText('Choose CSV file'), { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with CSV' })).toBeEnabled())
+    expect(screen.queryByText(/will import the first 10 eligible unique records/i)).not.toBeInTheDocument()
+  })
+
   it('adds a second CSV to the same bounded Demo workspace and shows the exhaustion cooldown', async () => {
     const token = 'i'.repeat(43)
     const csv = (start: number, count: number) => rowsToCsv([['review_id', 'source', 'review_text', 'review_date'], ...Array.from({ length: count }, (_, index) => [

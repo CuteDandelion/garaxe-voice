@@ -310,7 +310,7 @@ export function PublicDemo({ onBack, onLogin }: { onBack: () => void; onLogin: (
   const project = { id: 'demo', name: 'Temporary demo', primaryDecision: 'sample analysis' }
   const resetAt = result?.quota?.resetAt ? new Date(result.quota.resetAt) : null
   const quotaExhausted = Boolean(result && result.quota?.remaining === 0 && (resetAt || result.quota.freshDemoAvailable))
-  const remaining = result ? (quotaExhausted ? 0 : result.quota?.remaining ?? DEMO_COMMENT_ALLOWANCE) : 10
+  const remaining = result ? (quotaExhausted ? 0 : result.quota?.remaining ?? DEMO_COMMENT_ALLOWANCE) : DEMO_COMMENT_ALLOWANCE
   return <div className="app-shell demo-dashboard">
     <Sidebar demoMode demoCurationReady={state === 'completed'} open={menuOpen} projects={[project]} projectId="demo" activeLabel={demoPage} dataset={{ reviews: result ? projection.coverage.length : feedbackCount, sources: 1, confidence: lead?.confidence || null }} account={null} onNavigate={(label) => { if (label === 'Overview' || label === 'Voice Map' || label === 'Analysis' || (label === 'Curation' && state === 'completed')) setDemoPage(label); setMenuOpen(false) }} onProjectChange={() => undefined} onNewProject={() => undefined} onLogout={onBack} />
     {menuOpen ? <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}

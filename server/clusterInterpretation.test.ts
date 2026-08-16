@@ -455,14 +455,24 @@ describe('cluster interpretation', () => {
     expect(clusterInterpretationPolicyFromEnv({ GARAXE_LLM_ENRICHMENT_ENABLED: 'true' })).toBeNull()
     const environment = {
       GARAXE_LLM_ENRICHMENT_ENABLED: 'true', OPENCODE_GO_API_KEY: 'test-only', OPENCODE_GO_DEFAULT_MODEL: 'evaluated-model',
+      OPENCODE_GO_FALLBACK_MODEL: 'qwen3.7-max',
       GARAXE_LLM_REQUEST_CAPACITY: '1',
       GARAXE_LLM_REQUESTS_PER_SECOND: '0.1', GARAXE_LLM_TOKEN_CAPACITY: '100', GARAXE_LLM_TOKENS_PER_SECOND: '10',
       GARAXE_LLM_GLOBAL_CONCURRENCY: '1', GARAXE_LLM_PROVIDER_CONCURRENCY: '1', GARAXE_LLM_ORGANIZATION_CONCURRENCY: '1',
       GARAXE_LLM_MAX_OUTPUT_TOKENS: '100', GARAXE_LLM_DEADLINE_MS: '1000',
     }
     expect(clusterInterpretationPolicyFromEnv(environment)).toMatchObject({
-      model: 'evaluated-model', budgetEnforced: false, reservationMicro: 0,
+      model: 'evaluated-model', fallbackModel: 'qwen3.7-max', budgetEnforced: false, reservationMicro: 0,
     })
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_DEFAULT_MODEL: undefined })).toBeNull()
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_FALLBACK_MODEL: undefined })).toMatchObject({
+      model: 'evaluated-model', fallbackModel: undefined,
+    })
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_FALLBACK_MODEL: 'explicit-fallback' })).toMatchObject({
+      model: 'evaluated-model', fallbackModel: 'explicit-fallback',
+    })
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_FALLBACK_MODEL: 'evaluated-model' })).toBeNull()
+    expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_DEFAULT_MODEL: 'not a model' })).toBeNull()
     expect(clusterInterpretationPolicyFromEnv({ ...environment, OPENCODE_GO_API_KEY: undefined, OPENCODE_KEY: 'other-test-only' })).toBeNull()
     expect(clusterInterpretationPolicyFromEnv({ ...environment, GARAXE_LLM_BUDGET_ENFORCED: 'true' })).toBeNull()
     expect(clusterInterpretationPolicyFromEnv({

@@ -115,8 +115,8 @@ export async function generateReportNarrative(
   const generatedAt = options.generatedAt || new Date().toISOString()
   const environment = options.environment || process.env
   const provider = options.provider === undefined ? openCodeGoProviderFromEnv(environment) : options.provider
-  const model = environment.GARAXE_REPORT_LLM_MODEL || environment.OPENCODE_GO_DEFAULT_MODEL || 'qwen3.7-plus'
-  if (!provider || environment.GARAXE_REPORT_LLM_ENABLED === 'false') return fallbackNarrative(input, generatedAt)
+  const model = environment.GARAXE_REPORT_LLM_MODEL || environment.OPENCODE_GO_DEFAULT_MODEL
+  if (!provider || !model || environment.GARAXE_REPORT_LLM_ENABLED === 'false') return fallbackNarrative(input, generatedAt)
   try {
     const completion = await provider.complete({ model, messages: prompt(input), maxTokens: 1_200, temperature: 0, json: true, enableThinking: false })
     return parseNarrative(completion.content, input, generatedAt, completion.model)

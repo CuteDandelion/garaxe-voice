@@ -605,7 +605,7 @@ export class DurableLlmQueue {
   }
 
   async complete(jobId: string, leaseToken: string, input: {
-    result: unknown; inputTokens?: number; outputTokens?: number; actualMicro?: number; usageVerified: boolean; now?: Date
+    result: unknown; inputTokens?: number; outputTokens?: number; actualMicro?: number; usageVerified: boolean; model?: string; now?: Date
   }) {
     const now = input.now || new Date()
     for (const [field, value] of [['input_tokens', input.inputTokens], ['output_tokens', input.outputTokens], ['actual_micro', input.actualMicro]] as const) {
@@ -649,7 +649,7 @@ export class DurableLlmQueue {
         `INSERT INTO llm_attempts
          (id,job_id,attempt_number,provider,model,outcome,input_tokens,output_tokens,charged_micro,usage_verified,started_at,completed_at)
          VALUES ($1,$2,$3,$4,$5,'succeeded',$6,$7,$8,$9,$10,$10)`,
-        [randomUUID(), jobId, job.attemptCount, job.provider, job.model, input.inputTokens ?? null,
+        [randomUUID(), jobId, job.attemptCount, job.provider, input.model ?? job.model, input.inputTokens ?? null,
           input.outputTokens ?? null, charged, input.usageVerified, now.toISOString()],
       )
       await wakeConcurrencyWaiters(client, job.provider, job.model, now)
@@ -657,7 +657,9 @@ export class DurableLlmQueue {
     })
   }
 
-  async fail(jobId: string, leaseToken: string, input: { errorCode: string; retryAfter?: Date; now?: Date; retryable?: boolean }) {
+  async fail(jobId: string, leaseToken: string, input: {
+    errorCode: string; retryAfter?: Date; now?: Date; retryable?: boolean; model?: string
+  }) {
     const now = input.now || new Date()
     return this.database.transaction(async (client) => {
       const found = await client.query<{
@@ -684,12 +686,31 @@ export class DurableLlmQueue {
         `INSERT INTO llm_attempts
          (id,job_id,attempt_number,provider,model,outcome,error_code,started_at,completed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)`,
-        [randomUUID(), jobId, job.attemptCount, job.provider, job.model, dead ? 'failed' : 'retry',
+        [randomUUID(), jobId, job.attemptCount, job.provider, input.model ?? job.model, dead ? 'failed' : 'retry',
           input.errorCode, now.toISOString()],
       )
       await wakeConcurrencyWaiters(client, job.provider, job.model, now)
       return true
     })
+  }
+
+  async recordAttemptFailure(jobId: string, leaseToken: string, input: { model: string; errorCode: string; now?: Date }) {
+    const now = input.now || new Date()
+    const result = await this.database.query(
+      `INSERT INTO llm_attempts (id,job_id,attempt_number,provider,model,outcome,error_code,started_at,completed_at)
+       SELECT $1,id,attempt_count,provider,$4,'failed',$5,$3,$3 FROM llm_jobs
+       WHERE id=$2 AND state='running' AND lease_token_hash=$6 AND lease_expires_at>$3 RETURNING id`,
+      [randomUUID(), jobId, now.toISOString(), input.model, input.errorCode, hash(leaseToken)],
+    )
+    return result.rows.length === 1
+  }
+
+  async hasAttemptForModel(jobId: string, model: string) {
+    const result = await this.database.query<{ found: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM llm_attempts WHERE job_id=$1 AND model=$2
+       AND outcome IN ('succeeded','retry','failed')) AS found`, [jobId, model],
+    )
+    return result.rows[0]?.found ?? false
   }
 
   async completeFallback(jobId: string, now = new Date(), reason = 'DETERMINISTIC_FALLBACK') {

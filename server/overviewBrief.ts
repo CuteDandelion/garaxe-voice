@@ -107,8 +107,8 @@ export async function generateOverviewBrief(
   if (usable.length === 0) return evidenceOnly()
   const environment = options.environment || process.env
   const provider = options.provider === undefined ? openCodeGoProviderFromEnv(environment) : options.provider
-  if (!provider || environment.GARAXE_OVERVIEW_LLM_ENABLED === 'false') return evidenceOnly()
-  const model = environment.GARAXE_OVERVIEW_LLM_MODEL || environment.OPENCODE_GO_DEFAULT_MODEL || 'qwen3.7-plus'
+  const model = environment.GARAXE_OVERVIEW_LLM_MODEL || environment.OPENCODE_GO_DEFAULT_MODEL
+  if (!provider || !model || environment.GARAXE_OVERVIEW_LLM_ENABLED === 'false') return evidenceOnly()
   const requestMessages = messages(usable)
   const key = createHash('sha256').update(JSON.stringify([OVERVIEW_BRIEF_SCHEMA_VERSION, model, requestMessages])).digest('hex')
   const cache = briefCache(provider, options.provider === undefined)

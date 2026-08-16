@@ -100,6 +100,85 @@ describe('LlmWorkerRuntime', () => {
     expect(await queue.getJobState(created.id)).toBe('fallback_completed')
   })
 
+  it('uses one fallback-model attempt only for a transient primary failure', async () => {
+    const created = await enqueue('5'.repeat(64), { maxAttempts: 1 })
+    await queue.configureProviderHealth({ provider: 'opencode-go', model: 'qwen3.7-max' })
+    const acceptedModels: string[] = []
+    const provider = { complete: vi.fn(async (request: { model: string }) => {
+      if (request.model === 'economy') throw new LlmProviderError('PROVIDER_UNAVAILABLE', 'safe', null, 503)
+      return { ...completion(), model: request.model }
+    }) }
+
+    expect(await runtime(provider, {
+      fallbackModel: 'qwen3.7-max',
+      acceptCandidate: (result, job) => { acceptedModels.push(job.model); return JSON.parse(result.content) as unknown },
+    }).runOnce()).toMatchObject({ type: 'completed', jobId: created.id, model: 'qwen3.7-max', route: 'fallback', reason: 'PROVIDER_UNAVAILABLE' })
+    expect(provider.complete.mock.calls.map(([request]) => request.model)).toEqual(['economy', 'qwen3.7-max'])
+    expect(acceptedModels).toEqual(['qwen3.7-max'])
+    expect(await queue.getJobState(created.id)).toBe('succeeded')
+  })
+
+  it.each(['AUTHENTICATION_FAILED', 'MODEL_UNAVAILABLE', 'INVALID_RESPONSE'] as const)(
+    'does not switch models for %s', async (code) => {
+      const created = await enqueue(code.repeat(4).slice(0, 64), { maxAttempts: 2 })
+      const provider = { complete: vi.fn(async () => { throw new LlmProviderError(code, 'safe') }) }
+      expect(await runtime(provider, { fallbackModel: 'qwen3.7-max' }).runOnce()).toMatchObject({ type: 'fallback', reason: code })
+      expect(provider.complete).toHaveBeenCalledTimes(1)
+      expect(await queue.getJobState(created.id)).toBe('fallback_completed')
+    },
+  )
+
+  it('requeues the same job with Retry-After when the single fallback attempt is transiently unavailable', async () => {
+    const created = await enqueue('6'.repeat(64), { maxAttempts: 2 })
+    await queue.configureProviderHealth({ provider: 'opencode-go', model: 'qwen3.7-max' })
+    const events: unknown[] = []
+    const provider = { complete: vi.fn()
+      .mockRejectedValueOnce(new LlmProviderError('RATE_LIMITED', 'safe', 2_000, 429))
+      .mockRejectedValueOnce(new LlmProviderError('PROVIDER_UNAVAILABLE', 'safe', 4_000, 503))
+      .mockResolvedValueOnce({ ...completion(), model: 'economy' }) }
+    expect(await runtime(provider, { fallbackModel: 'qwen3.7-max', onEvent: (event) => events.push(event) }).runOnce()).toMatchObject({
+      type: 'retry', jobId: created.id, model: 'qwen3.7-max', route: 'fallback', reason: 'FALLBACK_PROVIDER_UNAVAILABLE',
+      retryAfterMs: 4_000, delayReason: 'retry_after',
+    })
+    expect(provider.complete).toHaveBeenCalledTimes(2)
+    expect(await queue.getJobState(created.id)).toBe('retry_wait')
+    const waiting = await database.query<{ availableAt: string }>(`SELECT available_at AS "availableAt" FROM llm_jobs WHERE id=$1`, [created.id])
+    expect(new Date(waiting.rows[0].availableAt).getTime()).toBe(now.getTime() + 4_000)
+    now = new Date(now.getTime() + 4_000)
+    expect(await runtime(provider, { fallbackModel: 'qwen3.7-max' }).runOnce()).toMatchObject({ type: 'completed', route: 'primary' })
+    expect(provider.complete.mock.calls.map(([request]) => request.model)).toEqual(['economy', 'qwen3.7-max', 'economy'])
+    const jobs = await database.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM llm_jobs WHERE analysis_run_id=$1', [runId])
+    expect(jobs.rows[0]?.count).toBe(1)
+    expect(JSON.stringify(events)).not.toContain('safe')
+  })
+
+  it('uses capped exponential jitter when fallback Retry-After is absent', async () => {
+    const created = await enqueue('8'.repeat(64), { maxAttempts: 2 })
+    await queue.configureProviderHealth({ provider: 'opencode-go', model: 'qwen3.7-max' })
+    const provider = { complete: vi.fn(async (request: { model: string }) => {
+      throw new LlmProviderError(request.model === 'economy' ? 'PROVIDER_UNAVAILABLE' : 'RATE_LIMITED', 'safe')
+    }) }
+    expect(await runtime(provider, { fallbackModel: 'qwen3.7-max', maxBackoffMs: 5_000 }).runOnce()).toMatchObject({
+      type: 'retry', route: 'fallback', retryAfterMs: 500, delayReason: 'exponential_backoff',
+    })
+    const waiting = await database.query<{ availableAt: string }>(`SELECT available_at AS "availableAt" FROM llm_jobs WHERE id=$1`, [created.id])
+    expect(new Date(waiting.rows[0].availableAt).getTime()).toBe(now.getTime() + 500)
+  })
+
+  it('releases a half-open fallback probe when the provider rate limits it', async () => {
+    await enqueue('4'.repeat(64), { maxAttempts: 2 })
+    await queue.configureProviderHealth({ provider: 'opencode-go', model: 'qwen3.7-max', failureThreshold: 1, cooldownMs: 1_000 })
+    await queue.recordProviderFailure('opencode-go', 'qwen3.7-max', new Date(now.getTime() - 1_000))
+    const provider = { complete: vi.fn(async (request: { model: string }) => {
+      throw new LlmProviderError(request.model === 'economy' ? 'PROVIDER_UNAVAILABLE' : 'RATE_LIMITED', 'safe')
+    }) }
+    await runtime(provider, { fallbackModel: 'qwen3.7-max' }).runOnce()
+    const health = await database.query<{ state: string; inflight: boolean }>(
+      `SELECT circuit_state AS state,half_open_in_flight AS inflight FROM llm_provider_health WHERE provider='opencode-go' AND model='qwen3.7-max'`,
+    )
+    expect(health.rows[0]).toEqual({ state: 'half_open', inflight: false })
+  })
+
   it('hands an exhausted batch to bounded recovery before completing fallback', async () => {
     const created = await enqueue('7'.repeat(64), { maxAttempts: 1 })
     const recoverTerminalFailure = vi.fn(async () => true)

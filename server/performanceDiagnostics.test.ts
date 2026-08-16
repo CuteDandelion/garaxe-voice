@@ -17,7 +17,7 @@ describe('local performance diagnostics boundary', () => {
       timings: { parseValidateMs: 12, csvSaveMs: 140, queueWaitMs: 500, firstEvidenceMs: 9_000, completionMs: 20_000, aggregationPersistMs: 200 },
       queue: { queued: 2, active: 1, leaseState: 'Waiting for intelligence capacity' },
       llm: { requests: 10, retries: 0, durationMs: 18_000 },
-      jobs: [{ jobId: 'job-1', status: 'Running intelligence', queueWaitMs: 500, progressPercent: 50, retries: 0, elapsedMs: 4_000, prompt: 'must never leave' }],
+      jobs: [{ jobId: 'job-1', status: 'Running intelligence', queueWaitMs: 500, progressPercent: 50, retries: 0, elapsedMs: 4_000, errorCode: 'RETRY_EXHAUSTED', attemptModels: ['configured-primary', 'configured-fallback'], attemptErrorCodes: ['INVALID_RESPONSE'], prompt: 'must never leave' }],
       resources: [{ sampledAt: '2026-08-14T11:55:00.000Z', service: 'api', cpuPercent: 12.5, rssMiB: 380, heapMiB: 120 }],
       rawFeedback: 'must never leave the diagnostics collector',
     }],
@@ -42,7 +42,7 @@ describe('local performance diagnostics boundary', () => {
     const response = await fetch(`${baseUrl}/api/_test/performance-diagnostics`)
     expect(response.status).toBe(200)
     const payload = await response.json()
-    expect(payload.data.runs[0]).toMatchObject({ runId: report.runs[0].runId, stage: 'Interpreting', llm: { requests: 10, retries: 0 }, jobs: [{ status: 'Running intelligence', progressPercent: 50 }] })
+    expect(payload.data.runs[0]).toMatchObject({ runId: report.runs[0].runId, stage: 'Interpreting', llm: { requests: 10, retries: 0 }, jobs: [{ status: 'Running intelligence', progressPercent: 50, errorCode: 'RETRY_EXHAUSTED', attemptModels: ['configured-primary', 'configured-fallback'], attemptErrorCodes: ['INVALID_RESPONSE'] }] })
     expect(payload.data.fairness.comparisons).toEqual([{ userLabel: 'user-1', queueWaitMs: 500, firstEvidenceMs: 9_000, completionMs: 20_000, progressPercent: 100 }])
     expect(JSON.stringify(payload)).not.toContain('must never leave')
 
@@ -68,11 +68,12 @@ describe('local performance diagnostics boundary', () => {
     const database = new PGlite()
     await database.exec(`
       CREATE TABLE analysis_runs (id TEXT PRIMARY KEY,status TEXT NOT NULL,stage TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL,completed_at TIMESTAMPTZ);
-      CREATE TABLE llm_jobs (id TEXT PRIMARY KEY,analysis_run_id TEXT NOT NULL,kind TEXT NOT NULL,state TEXT NOT NULL,attempt_count INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL,available_at TIMESTAMPTZ NOT NULL,last_leased_at TIMESTAMPTZ,completed_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL);
+      CREATE TABLE llm_jobs (id TEXT PRIMARY KEY,analysis_run_id TEXT NOT NULL,kind TEXT NOT NULL,state TEXT NOT NULL,attempt_count INTEGER NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL,available_at TIMESTAMPTZ NOT NULL,last_leased_at TIMESTAMPTZ,completed_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL,last_error_code TEXT);
+      CREATE TABLE llm_attempts (job_id TEXT NOT NULL,model TEXT NOT NULL,error_code TEXT);
       INSERT INTO analysis_runs VALUES ('run-1','running','interpreting_clusters','2026-08-14T12:00:00Z',NULL);
       INSERT INTO llm_jobs VALUES
-        ('job-1','run-1','emerging_signal_interpretation:1','succeeded',1,'2026-08-14T12:00:00Z','2026-08-14T12:00:00Z','2026-08-14T12:00:01Z','2026-08-14T12:00:05Z','2026-08-14T12:00:05Z'),
-        ('job-2','run-1','emerging_signal_interpretation:2','queued',0,'2026-08-14T12:00:00Z','2026-08-14T12:00:00Z',NULL,NULL,'2026-08-14T12:00:00Z');
+        ('job-1','run-1','emerging_signal_interpretation:1','succeeded',1,'2026-08-14T12:00:00Z','2026-08-14T12:00:00Z','2026-08-14T12:00:01Z','2026-08-14T12:00:05Z','2026-08-14T12:00:05Z',NULL),
+        ('job-2','run-1','emerging_signal_interpretation:2','queued',0,'2026-08-14T12:00:00Z','2026-08-14T12:00:00Z',NULL,NULL,'2026-08-14T12:00:00Z',NULL);
     `)
     const partial = await collectLocalPerformanceDiagnostics([{ database: database as never, lane: 'authenticated' }], {})
     expect(partial.runs[0]?.timings.firstEvidenceMs).toBe(0)

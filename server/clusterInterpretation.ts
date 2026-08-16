@@ -122,6 +122,7 @@ export type ClusterWork = {
 
 export type ClusterInterpretationPolicy = {
   model: string
+  fallbackModel?: string
   budgetEnforced: boolean
   globalBudgetMicro: number
   organizationBudgetMicro: number
@@ -152,6 +153,7 @@ const nonNegativeNumber = (value: string | undefined) => {
 export function clusterInterpretationPolicyFromEnv(environment: NodeJS.ProcessEnv = process.env): ClusterInterpretationPolicy | null {
   if (environment.GARAXE_LLM_ENRICHMENT_ENABLED !== 'true' || !environment.OPENCODE_GO_API_KEY) return null
   const model = environment.OPENCODE_GO_DEFAULT_MODEL?.trim()
+  const fallbackModel = environment.OPENCODE_GO_FALLBACK_MODEL?.trim() || undefined
   const budgetEnforced = environment.GARAXE_LLM_BUDGET_ENFORCED === 'true'
   const operationalValues = {
     requestCapacity: positiveInteger(environment.GARAXE_LLM_REQUEST_CAPACITY),
@@ -173,9 +175,11 @@ export function clusterInterpretationPolicyFromEnv(environment: NodeJS.ProcessEn
   } : {
     globalBudgetMicro: 0, organizationBudgetMicro: 0, projectBudgetMicro: 0, runBudgetMicro: 0, reservationMicro: 0,
   }
-  if (!model || Object.values(operationalValues).some((value) => value === null)
+  const validModel = (value: string) => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(value)
+  if (!model || !validModel(model) || (fallbackModel !== undefined && (!validModel(fallbackModel) || fallbackModel === model))
+    || Object.values(operationalValues).some((value) => value === null)
     || Object.values(budgetValues).some((value) => value === null)) return null
-  return { model, budgetEnforced, ...operationalValues, ...budgetValues } as ClusterInterpretationPolicy
+  return { model, fallbackModel, budgetEnforced, ...operationalValues, ...budgetValues } as ClusterInterpretationPolicy
 }
 
 export async function loadClusterWork(database: Database, runId: string, themeIds: string[] | null = null): Promise<ClusterWork> {
@@ -1187,6 +1191,7 @@ export async function enqueueClusterInterpretation(database: Database, input: {
   await queue.configureConcurrencyLimit({ scopeType: 'provider_model', provider: 'opencode_go', model: policy.model, maxInFlight: policy.providerConcurrency })
   await queue.configureConcurrencyLimit({ scopeType: 'organization', organizationId: input.organizationId, maxInFlight: policy.organizationConcurrency })
   await queue.configureProviderHealth({ provider: 'opencode_go', model: policy.model, enabled: true })
+  if (policy.fallbackModel) await queue.configureProviderHealth({ provider: 'opencode_go', model: policy.fallbackModel, enabled: true })
   const reservationMicro = policy.budgetEnforced
     ? Math.max(1, Math.floor(Math.min(policy.reservationMicro, policy.runBudgetMicro) / jobSpecs.length))
     : 0
@@ -1325,9 +1330,10 @@ export async function createClusterInterpretationWorker(database: Database, envi
   if (!policy) return null
   const queue = new DurableLlmQueue(database)
   await queue.configureProviderHealth({ provider: 'opencode_go', model: policy.model, enabled: true })
+  if (policy.fallbackModel) await queue.configureProviderHealth({ provider: 'opencode_go', model: policy.fallbackModel, enabled: true })
   return new LlmWorkerRuntime({
     queue, provider: openCodeGoProviderFromEnv(environment), providerName: 'opencode_go',
-    model: policy.model, workerId: `cluster-interpretation:${process.pid}`,
+    model: policy.model, fallbackModel: policy.fallbackModel, workerId: `cluster-interpretation:${process.pid}`,
     resolveWork: async (job) => {
       if (job.promptVersion !== CLUSTER_INTERPRETATION_PROMPT_VERSION
         || job.schemaVersion !== CLUSTER_INTERPRETATION_SCHEMA_VERSION

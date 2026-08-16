@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { EffectiveTheme } from './curation'
 import type { OpenCodeGoProvider } from './llmProvider'
 import { generateReportNarrative } from './reportNarrative'
@@ -36,5 +36,14 @@ describe('report narrative synthesis', () => {
     const result = await generateReportNarrative({ projectName: 'Shop', objective: 'full_voice_map', themes: [theme()] }, { provider: null, generatedAt: '2026-01-01T00:00:00.000Z' })
     expect(result.provenance.generator).toBe('curated_interpretations')
     expect(result.actions[0].themeIds).toEqual(['theme-1'])
+  })
+
+  it('fails closed when no model route is configured', async () => {
+    const provider = { complete: vi.fn() } as unknown as OpenCodeGoProvider
+    const result = await generateReportNarrative({ projectName: 'Shop', objective: 'full_voice_map', themes: [theme()] }, {
+      provider, environment: {}, generatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    expect(result.provenance.generator).toBe('curated_interpretations')
+    expect(provider.complete).not.toHaveBeenCalled()
   })
 })

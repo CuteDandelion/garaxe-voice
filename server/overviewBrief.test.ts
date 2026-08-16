@@ -11,6 +11,7 @@ const themes = [{
   origin: 'model_confirmed', provenance: { createdBy: null, createdAt: null, sourceReviewIds: ['review-1'] },
   evidence: [{ signalId: 'signal-1', reviewId: 'review-1', quote: 'Setup took too long.', quoteStart: 0, quoteEnd: 20, confidence: .9, pinned: false, excluded: false }],
 }] as EffectiveTheme[]
+const configuredEnvironment = { OPENCODE_GO_DEFAULT_MODEL: 'test-model' }
 
 describe('overview intelligence brief', () => {
   it('reuses one in-flight and completed brief for identical grounded evidence', async () => {
@@ -27,10 +28,10 @@ describe('overview intelligence brief', () => {
     }) }) } as unknown as OpenCodeGoProvider
 
     const [first, second] = await Promise.all([
-      generateOverviewBrief(themes, { provider }),
-      generateOverviewBrief(themes, { provider }),
+      generateOverviewBrief(themes, { provider, environment: configuredEnvironment }),
+      generateOverviewBrief(themes, { provider, environment: configuredEnvironment }),
     ])
-    const third = await generateOverviewBrief(themes, { provider })
+    const third = await generateOverviewBrief(themes, { provider, environment: configuredEnvironment })
 
     expect(first).toEqual(second)
     expect(third).toEqual(first)
@@ -51,8 +52,8 @@ describe('overview intelligence brief', () => {
     }) }) } as unknown as OpenCodeGoProvider
     const changed = [{ ...themes[0], evidence: [{ ...themes[0].evidence[0], quote: 'Setup took even longer.' }] }] as EffectiveTheme[]
 
-    await generateOverviewBrief(themes, { provider })
-    await generateOverviewBrief(changed, { provider })
+    await generateOverviewBrief(themes, { provider, environment: configuredEnvironment })
+    await generateOverviewBrief(changed, { provider, environment: configuredEnvironment })
     await generateOverviewBrief(changed, { provider, environment: { GARAXE_OVERVIEW_LLM_MODEL: 'alternate-model' } })
 
     expect(provider.complete).toHaveBeenCalledTimes(3)
@@ -73,7 +74,7 @@ describe('overview intelligence brief', () => {
       ],
     }) }) } as unknown as OpenCodeGoProvider
 
-    await generateOverviewBrief(themes, { provider })
+    await generateOverviewBrief(themes, { provider, environment: configuredEnvironment })
 
     expect(provider.complete).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 1_800 }))
     const request = vi.mocked(provider.complete).mock.calls[0][0]
@@ -90,7 +91,7 @@ describe('overview intelligence brief', () => {
       majorOpportunity: null, majorRisk: null, salesImplications: [], marketingImplications: [], nextActions: [],
     }) }) } as unknown as OpenCodeGoProvider
 
-    await expect(generateOverviewBrief(themes, { provider })).resolves.toEqual({
+    await expect(generateOverviewBrief(themes, { provider, environment: configuredEnvironment })).resolves.toEqual({
       status: 'evidence_only', schemaVersion: 'overview-intelligence-v1', brief: null,
       message: 'The intelligence brief is unavailable. Evidence context remains available.',
     })
@@ -109,6 +110,12 @@ describe('overview intelligence brief', () => {
       ],
     }) }) } as unknown as OpenCodeGoProvider
 
-    await expect(generateOverviewBrief(themes, { provider })).resolves.toMatchObject({ status: 'evidence_only', brief: null })
+    await expect(generateOverviewBrief(themes, { provider, environment: configuredEnvironment })).resolves.toMatchObject({ status: 'evidence_only', brief: null })
+  })
+
+  it('fails closed when no model route is configured', async () => {
+    const provider = { complete: vi.fn() } as unknown as OpenCodeGoProvider
+    await expect(generateOverviewBrief(themes, { provider, environment: {} })).resolves.toMatchObject({ status: 'evidence_only' })
+    expect(provider.complete).not.toHaveBeenCalled()
   })
 })

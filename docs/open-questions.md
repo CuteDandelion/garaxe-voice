@@ -10,7 +10,7 @@ Last updated: 2026-08-12
 5. Google Business Profile API approval status and availability of a real staging design partner.
 6. Supported launch languages and whether translated analysis preserves bilingual evidence. Category quality and repeatability require governed multilingual fixtures and held-out evaluation; deterministic keyword correction is not used as a substitute for semantic validation.
 7. Review/credential/report retention periods and deletion SLA.
-8. Which provider/model configuration will pass the paid-beta promotion thresholds in `model-evaluation.md` and the target-environment operational gates. Qwen no-thinking is the evaluated local default under D-052, but it is not yet promoted for connected paid-beta operation; an explicitly labelled deterministic fallback remains mandatory.
+8. Whether the configured primary/fallback pair in `.env.example` will pass the paid-beta promotion thresholds in `model-evaluation.md` and the target-environment operational gates. Runtime code intentionally contains no provider model literal; deployment may tune both IDs, and current local fallback/backoff tests are not live promotion evidence.
 9. Which organization roles may mark curation ready in production; the current write boundary allows owner, admin, and analyst.
 10. White-label report requirements beyond the implemented Voice Lab PDF fidelity.
 11. Whether users may submit review-page URLs at launch; each URL source needs an explicit authorized acquisition method and rights review.

@@ -24,7 +24,12 @@ export function sanitizePerformanceDiagnostics(value: unknown) {
       llm: { requests: finite(llm.requests), retries: finite(llm.retries), durationMs: finite(llm.durationMs) },
       jobs: (Array.isArray(run.jobs) ? run.jobs : []).slice(0, 12).map((candidate) => {
         const job = candidate && typeof candidate === 'object' ? candidate as Record<string, unknown> : {}
-        return { jobId: text(job.jobId, 64), status: text(job.status, 60), queueWaitMs: finite(job.queueWaitMs), progressPercent: Math.min(100, finite(job.progressPercent)), retries: finite(job.retries), elapsedMs: finite(job.elapsedMs) }
+        return {
+          jobId: text(job.jobId, 64), status: text(job.status, 60), queueWaitMs: finite(job.queueWaitMs), progressPercent: Math.min(100, finite(job.progressPercent)),
+          retries: finite(job.retries), elapsedMs: finite(job.elapsedMs), errorCode: text(job.errorCode, 80),
+          attemptModels: (Array.isArray(job.attemptModels) ? job.attemptModels : []).map((model) => text(model, 128)).filter(Boolean).slice(0, 4),
+          attemptErrorCodes: (Array.isArray(job.attemptErrorCodes) ? job.attemptErrorCodes : []).map((code) => text(code, 80)).filter(Boolean).slice(0, 8),
+        }
       }),
       resources: (Array.isArray(run.resources) ? run.resources : []).slice(0, 500).map((candidate) => {
         const resource = candidate && typeof candidate === 'object' ? candidate as Record<string, unknown> : {}
@@ -117,9 +122,11 @@ export async function collectLocalPerformanceDiagnostics(
          FROM llm_jobs WHERE analysis_run_id=$1`, [run.id],
       )
       const counts = jobs.rows[0] || { total: 0, queued: 0, active: 0, completed: 0, retries: 0, longestQueueMs: 0, firstEvidenceAt: null, lastCompletedAt: null, modelDurationMs: 0 }
-      const recentJobs = await target.database.query<{ id: string; state: string; createdAt: string; lastLeasedAt: string | null; completedAt: string | null; attemptCount: number }>(
-        `SELECT id,state,created_at AS "createdAt",last_leased_at AS "lastLeasedAt",completed_at AS "completedAt",attempt_count AS "attemptCount"
-         FROM llm_jobs WHERE analysis_run_id=$1 ORDER BY created_at DESC LIMIT 12`, [run.id],
+      const recentJobs = await target.database.query<{ id: string; state: string; createdAt: string; lastLeasedAt: string | null; completedAt: string | null; attemptCount: number; lastErrorCode: string | null; attemptModels: string[]; attemptErrorCodes: string[] }>(
+        `SELECT j.id,j.state,j.created_at AS "createdAt",j.last_leased_at AS "lastLeasedAt",j.completed_at AS "completedAt",j.attempt_count AS "attemptCount",j.last_error_code AS "lastErrorCode",
+          ARRAY(SELECT DISTINCT a.model FROM llm_attempts a WHERE a.job_id=j.id ORDER BY a.model) AS "attemptModels",
+          ARRAY(SELECT DISTINCT a.error_code FROM llm_attempts a WHERE a.job_id=j.id AND a.error_code IS NOT NULL ORDER BY a.error_code) AS "attemptErrorCodes"
+         FROM llm_jobs j WHERE j.analysis_run_id=$1 ORDER BY j.created_at DESC LIMIT 12`, [run.id],
       )
       const baseProgress = run.status === 'completed' ? 100 : run.stage === 'interpreting_clusters' && counts.total > 0
         ? 40 + Math.round((counts.completed / counts.total) * 55)
@@ -156,7 +163,7 @@ export async function collectLocalPerformanceDiagnostics(
               : running ? 'Running intelligence' : job.state === 'retry_wait' ? 'Waiting to retry' : 'Waiting for intelligence capacity'
           return {
             jobId: job.id, status, queueWaitMs: job.lastLeasedAt ? milliseconds(job.createdAt, job.lastLeasedAt) : milliseconds(job.createdAt, new Date().toISOString()),
-            progressPercent: terminal ? 100 : running ? 50 : 0, retries: Math.max(0, job.attemptCount - 1), elapsedMs: milliseconds(job.createdAt, job.completedAt || new Date().toISOString()),
+            progressPercent: terminal ? 100 : running ? 50 : 0, retries: Math.max(0, job.attemptCount - 1), elapsedMs: milliseconds(job.createdAt, job.completedAt || new Date().toISOString()), errorCode: job.lastErrorCode || '', attemptModels: job.attemptModels, attemptErrorCodes: job.attemptErrorCodes,
           }
         }),
         resources: resourceSamples.filter((sample) => !sample.sampledAt || (new Date(sample.sampledAt).getTime() >= new Date(run.createdAt).getTime() && new Date(sample.sampledAt).getTime() <= new Date(completedAt).getTime())).slice(-100),

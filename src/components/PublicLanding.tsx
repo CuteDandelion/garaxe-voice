@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { VoiceMapWorkspace, type SynthesizedVoiceMap, type VoiceMapConfidence, type VoiceMapSignalType, type VoiceMapTheme } from './VoiceMapWorkspace'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
@@ -8,6 +8,7 @@ import { CsvImportPreflight, type PreparedCsvImport } from './CsvImportPreflight
 import { getDemoOverviewBrief, type AnalysisCoverageItem, type OverviewBriefResult } from '../lib/api'
 import { DEMO_COMMENT_ALLOWANCE } from '../lib/csv'
 import { categorizeVisibleSignals, emergingThemesFromCoverage, emptyVoiceMapInsight, publicSentiment, publicSignalType } from './VoiceMapWorkspaceContainer'
+import { projectDateRange } from '../lib/dateProjection'
 import './PublicLanding.css'
 
 type PublicLandingProps = {
@@ -147,7 +148,7 @@ type DemoTheme = {
   sentiment?: string
   confidence: string
   origin?: 'model_confirmed' | 'user_curated'
-  evidence: Array<{ reviewId?: string; quote?: string; quoteStart?: number; quoteEnd?: number; originalText?: string; entity?: string; rating?: number }>
+  evidence: Array<{ reviewId?: string; quote?: string; quoteStart?: number; quoteEnd?: number; originalText?: string; entity?: string; rating?: number; ratingScale?: number; sourceCreatedAt?: string | null }>
 }
 
 type DemoResult = {
@@ -220,6 +221,8 @@ export function PublicDemo({ onBack, onLogin }: { onBack: () => void; onLogin: (
   const [demoPage, setDemoPage] = useState<'Overview' | 'Voice Map' | 'Analysis' | 'Curation'>('Analysis')
   const [token, setToken] = useState<string | null>(null)
   const [overviewBrief, setOverviewBrief] = useState<OverviewBriefResult | null>(null)
+  const [dateRange, setDateRange] = useState<{ from: string | null; to: string | null }>({ from: null, to: null })
+  const [importNotice, setImportNotice] = useState('')
 
   const refreshResult = async (activeToken = token) => {
     if (!activeToken) return
@@ -227,7 +230,8 @@ export function PublicDemo({ onBack, onLogin }: { onBack: () => void; onLogin: (
     const payload = await response.json() as { data?: DemoResult; error?: { message?: string } }
     if (!response.ok || !payload.data) throw new Error(payload.error?.message || 'The demo result could not be refreshed.')
     setResult(payload.data)
-    setOverviewBrief(await getDemoOverviewBrief(activeToken))
+    setOverviewBrief(null)
+    void getDemoOverviewBrief(activeToken).then(setOverviewBrief).catch(() => undefined)
   }
 
   const checkDemoReady = async () => {
@@ -243,12 +247,11 @@ export function PublicDemo({ onBack, onLogin }: { onBack: () => void; onLogin: (
 
   const startNewDemo = () => {
     setToken(null); setResult(null); setOverviewBrief(null); setFeedbackCount(0)
-    setSelectedThemeId(null); setState('ready'); setStage('ready'); setMessage('')
+    setSelectedThemeId(null); setState('ready'); setStage('ready'); setMessage(''); setImportNotice('')
   }
 
   const runDemo = async (prepared: PreparedCsvImport) => {
     const appending = Boolean(token)
-    setFeedbackCount((current) => appending ? current + prepared.rows.length : prepared.rows.length)
     setState('running')
     setStage('queued')
     setMessage(appending ? 'Adding this CSV to the temporary project and refreshing its analysis…' : 'Creating an isolated demo project and running the analysis pipeline…')
@@ -256,22 +259,25 @@ export function PublicDemo({ onBack, onLogin }: { onBack: () => void; onLogin: (
       const createdResponse = await fetch(appending ? `/api/demo/analysis-runs/${token}/imports` : '/api/demo/analysis-runs', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileName: prepared.fileName, rawCsv: prepared.rawCsv, mapping: prepared.mapping }),
       })
-      const createdPayload = await createdResponse.json() as { data?: { token: string; expiresAt: string }; error?: { message?: string } }
+      const createdPayload = await createdResponse.json() as { data?: { token: string; expiresAt: string; addedRecords?: number; notImportedRecords?: number }; error?: { message?: string } }
       if (!createdResponse.ok || !createdPayload.data) throw new Error(createdPayload.error?.message || 'The live demo is unavailable.')
       setToken(createdPayload.data.token)
+      setFeedbackCount((current) => appending ? current + (createdPayload.data?.addedRecords || 0) : createdPayload.data?.addedRecords || 0)
+      const omitted = createdPayload.data.notImportedRecords || 0
+      setImportNotice(omitted ? `${createdPayload.data.addedRecords || 0} records imported. ${omitted} ${omitted === 1 ? 'record was' : 'records were'} not imported because the Demo allowance was reached.` : '')
       while (true) {
         const statusResponse = await fetch(`/api/demo/analysis-runs/${createdPayload.data.token}`)
         const statusPayload = await statusResponse.json() as { data?: DemoResult; error?: { message?: string } }
         if (!statusResponse.ok || !statusPayload.data) throw new Error(statusPayload.error?.message || 'The demo status could not be loaded.')
         if (statusPayload.data.status === 'completed') {
           setResult(statusPayload.data)
-          setOverviewBrief(await getDemoOverviewBrief(createdPayload.data.token))
           setSelectedThemeId(statusPayload.data.themes?.[0]?.id || null)
           setDemoPage('Overview')
           setState('completed')
           setStage('completed')
           setFeedbackCount(statusPayload.data.coverage?.length || 0)
           setMessage(appending ? 'The additional feedback is now included in this temporary project.' : 'Live analysis complete. The result below came from the same versioned engine used by the persistent workspace.')
+          void getDemoOverviewBrief(createdPayload.data.token).then(setOverviewBrief).catch(() => undefined)
           return
         }
         if (statusPayload.data.status === 'failed') throw new Error(statusPayload.data.message || 'The live analysis did not complete.')
@@ -286,25 +292,31 @@ export function PublicDemo({ onBack, onLogin }: { onBack: () => void; onLogin: (
   }
 
   const themes = result?.themes || []
-  const mappedThemes: VoiceMapTheme[] = themes.map((theme, index) => { const evidence = theme.evidence.map((item, evidenceIndex) => ({ id: `${theme.id}:${evidenceIndex}`, reviewId: item.reviewId || `${theme.id}:${evidenceIndex}`, quote: item.quote || '', quoteStart: item.quoteStart ?? 0, quoteEnd: item.quoteEnd ?? (item.quote || '').length, originalText: item.originalText || item.quote || '', rating: item.rating ?? null, provider: 'Demo submission', entity: item.entity || 'Demo submission', language: null, sourceCreatedAt: null, sourceUrl: null, strength: 1 })); const type = publicSignalType(theme.primarySignalType || theme.type); return { id: theme.id, rank: index + 1, name: theme.name, topic: theme.topic, type, signalTypes: [type] as VoiceMapSignalType[], sentiment: publicSentiment(theme.sentiment, theme.type === 'praise' ? 'praise' : undefined), summary: theme.summary, confidence: theme.confidence.toLowerCase() as VoiceMapConfidence, representativeQuote: evidence[0]?.quote || null, metrics: { reviewCount: new Set(evidence.map((item) => item.reviewId)).size, signalCount: evidence.length, prevalence: result?.coverage?.length ? evidence.length / result.coverage.length : 0, averageRating: null, trend: null, contradictionRate: 0 }, topPhrases: [], entityBreakdown: [], languageBreakdown: [], evidence } })
-  const curatedThemeIds = new Set((result?.coverage || []).filter((item) => item.disposition === 'user_curated').flatMap((item) => item.themeIds))
-  const recurringThemeIds = new Set((result?.coverage || []).filter((item) => item.disposition === 'recurring').flatMap((item) => item.themeIds))
-  const curatedThemes = mappedThemes.filter((theme) => curatedThemeIds.has(theme.id))
-  const confirmedThemes = mappedThemes.filter((theme) => recurringThemeIds.has(theme.id) && !curatedThemeIds.has(theme.id))
-  const emergingThemes = emergingThemesFromCoverage(result?.coverage || [])
+  const mappedThemes: VoiceMapTheme[] = themes.map((theme, index) => { const evidence = theme.evidence.map((item, evidenceIndex) => ({ id: `${theme.id}:${evidenceIndex}`, reviewId: item.reviewId || `${theme.id}:${evidenceIndex}`, quote: item.quote || '', quoteStart: item.quoteStart ?? 0, quoteEnd: item.quoteEnd ?? (item.quote || '').length, originalText: item.originalText || item.quote || '', rating: item.rating ?? null, ratingScale: item.ratingScale ?? null, provider: 'Demo submission', entity: item.entity || 'Demo submission', language: null, sourceCreatedAt: typeof item.sourceCreatedAt === 'string' ? item.sourceCreatedAt : null, sourceUrl: null, strength: 1 })); const type = publicSignalType(theme.primarySignalType || theme.type); return { id: theme.id, rank: index + 1, name: theme.name, topic: theme.topic, type, signalTypes: [type] as VoiceMapSignalType[], sentiment: publicSentiment(theme.sentiment, theme.type === 'praise' ? 'praise' : undefined), summary: theme.summary, confidence: theme.confidence.toLowerCase() as VoiceMapConfidence, representativeQuote: evidence[0]?.quote || null, metrics: { reviewCount: new Set(evidence.map((item) => item.reviewId)).size, signalCount: evidence.length, prevalence: result?.coverage?.length ? evidence.length / result.coverage.length : 0, averageRating: null, trend: null, contradictionRate: 0 }, topPhrases: [], entityBreakdown: [], languageBreakdown: [], evidence } })
+  const availableDates = (result?.coverage || []).flatMap((item) => item.source?.sourceCreatedAt?.slice(0, 10) || []).sort()
+  const availableDateRange = { from: availableDates[0] || null, to: availableDates.at(-1) || null }
+  const projection = useMemo(() => projectDateRange(mappedThemes, result?.coverage || [], dateRange), [dateRange.from, dateRange.to, mappedThemes, result?.coverage])
+  const curatedThemeIds = new Set(projection.coverage.filter((item) => item.disposition === 'user_curated').flatMap((item) => item.themeIds))
+  const recurringThemeIds = new Set(projection.coverage.filter((item) => item.disposition === 'recurring').flatMap((item) => item.themeIds))
+  const curatedThemes = projection.themes.filter((theme) => curatedThemeIds.has(theme.id))
+  const confirmedThemes = projection.themes.filter((theme) => recurringThemeIds.has(theme.id) && !curatedThemeIds.has(theme.id))
+  const emergingThemes = emergingThemesFromCoverage(projection.coverage)
   const visibleThemes = [...confirmedThemes, ...curatedThemes, ...emergingThemes]
   const lead = confirmedThemes[0]
   const baseSignals: SynthesizedVoiceMap['signals'] = { primaryPain: emptyVoiceMapInsight('primary_pain'), desiredOutcome: emptyVoiceMapInsight('desired_outcome'), mainObjection: emptyVoiceMapInsight('main_objection'), emotionalDriver: emptyVoiceMapInsight('emotional_driver') }
-  const voiceMap: SynthesizedVoiceMap = { conclusion: lead ? { title: lead.name, narrative: lead.summary } : { title: 'Actionable signals are emerging from retained feedback.', narrative: `${new Set(visibleThemes.flatMap((theme) => theme.evidence.map((item) => item.reviewId))).size} comments have grounded category homes below. Recurrence and executive conclusions remain unconfirmed.` }, signals: categorizeVisibleSignals(baseSignals, [...confirmedThemes, ...emergingThemes]), phrases: [...confirmedThemes.map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'confirmed' as const })), ...curatedThemes.map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'curated' as const })), ...emergingThemes.map((theme) => ({ text: theme.name, count: 1, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'emerging' as const }))], recommendedMoves: [] }
+  const filtered = Boolean(dateRange.from || dateRange.to)
+  const voiceMap: SynthesizedVoiceMap = { conclusion: filtered ? { title: 'Filtered evidence view', narrative: `${projection.coverage.length} comments fall within this review period.` } : lead ? { title: lead.name, narrative: lead.summary } : { title: 'Actionable signals are emerging from retained feedback.', narrative: `${new Set(visibleThemes.flatMap((theme) => theme.evidence.map((item) => item.reviewId))).size} comments have grounded category homes below. Recurrence and executive conclusions remain unconfirmed.` }, signals: categorizeVisibleSignals(baseSignals, [...confirmedThemes, ...emergingThemes]), phrases: [...confirmedThemes.map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'confirmed' as const })), ...curatedThemes.map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'curated' as const })), ...emergingThemes.map((theme) => ({ text: theme.name, count: 1, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'emerging' as const }))], recommendedMoves: [] }
+  const displayedBrief = filtered ? { status: 'evidence_only' as const, schemaVersion: 'overview-intelligence-v1' as const, brief: null, message: 'Clear the date filter to view the full saved intelligence brief.' } : overviewBrief
   const project = { id: 'demo', name: 'Temporary demo', primaryDecision: 'sample analysis' }
   const resetAt = result?.quota?.resetAt ? new Date(result.quota.resetAt) : null
   const quotaExhausted = Boolean(result && result.quota?.remaining === 0 && (resetAt || result.quota.freshDemoAvailable))
   const remaining = result ? (quotaExhausted ? 0 : result.quota?.remaining ?? DEMO_COMMENT_ALLOWANCE) : 10
   return <div className="app-shell demo-dashboard">
-    <Sidebar demoMode demoCurationReady={state === 'completed'} open={menuOpen} projects={[project]} projectId="demo" activeLabel={demoPage} dataset={{ reviews: result?.coverage?.length || feedbackCount, sources: 1, confidence: lead?.confidence || null }} account={null} onNavigate={(label) => { if (label === 'Overview' || label === 'Voice Map' || label === 'Analysis' || (label === 'Curation' && state === 'completed')) setDemoPage(label); setMenuOpen(false) }} onProjectChange={() => undefined} onNewProject={() => undefined} onLogout={onBack} />
+    <Sidebar demoMode demoCurationReady={state === 'completed'} open={menuOpen} projects={[project]} projectId="demo" activeLabel={demoPage} dataset={{ reviews: result ? projection.coverage.length : feedbackCount, sources: 1, confidence: lead?.confidence || null }} account={null} onNavigate={(label) => { if (label === 'Overview' || label === 'Voice Map' || label === 'Analysis' || (label === 'Curation' && state === 'completed')) setDemoPage(label); setMenuOpen(false) }} onProjectChange={() => undefined} onNewProject={() => undefined} onLogout={onBack} />
     {menuOpen ? <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
-    <div className="app-frame"><Topbar demoMode projects={[project]} projectId="demo" title={demoPage} dateRange={{ from: null, to: null }} availableDateRange={{ from: null, to: null }} userInitials="D" account={null} dateFilterBusy={false} onProjectChange={() => undefined} onDateRangeChange={async () => undefined} onLogout={onBack} onMenu={() => setMenuOpen(true)} onExport={() => { if (result?.pdfUrl) window.location.assign(result.pdfUrl) }} onHome={onBack} />
-      <main>{demoPage === 'Curation' && state === 'completed' && token && result ? <CurationWorkspaceContainer projectId={null} demo={{ token, expiresAt: result.expiresAt, engine: result.engine || 'Voice Map intelligence', coverage: result.coverage || [], onChange: () => refreshResult(token) }} /> : (demoPage === 'Overview' || demoPage === 'Voice Map') && state === 'completed' ? <><VoiceMapWorkspace section={demoPage === 'Overview' ? 'overview' : 'voice-map'} mode={demoPage === 'Overview' ? 'overview' : mode} status={visibleThemes.length ? 'ready' : 'empty'} run={{ id: 'temporary-demo', createdAt: new Date().toISOString(), reviewCount: result?.coverage?.length || 0, themeCount: confirmedThemes.length, confidence: lead?.confidence || 'insufficient', pipelineVersion: result?.engine || 'Voice Map intelligence' }} voiceMap={voiceMap} themes={visibleThemes} overviewBrief={overviewBrief} selectedThemeId={selectedThemeId} onModeChange={(next) => { if (next !== 'overview') setMode(next) }} onOpenVoiceMap={(next) => { setMode(next); setDemoPage('Voice Map') }} onThemeSelect={setSelectedThemeId} onThemeClose={() => setSelectedThemeId(null)} onOpenReview={() => undefined} onOpenCuration={() => setDemoPage('Curation')} />{demoPage === 'Voice Map' ? <CoverageSummary demo items={result?.coverage || []} onThemeSelect={setSelectedThemeId} /> : null}{result?.pdfUrl ? <div className="demo-download"><div><strong>Download the temporary demo report.</strong><p>No-store response. No retained download history.</p></div><a className="public-button public-button--dark" href={result.pdfUrl} download>Download demo PDF</a></div> : null}</> : <section className="demo-analysis-panel" aria-label="Temporary demo analysis"><p className="public-kicker">Demo mode · isolated workspace</p><h1>{quotaExhausted ? 'Demo upload allowance used.' : result ? `Add up to ${remaining} more feedback records.` : `Analyze up to ${DEMO_COMMENT_ALLOWANCE} feedback records.`}</h1><p>{result ? 'Additional CSVs stay inside this temporary workspace and never carry into another project. Each accepted import refreshes the analysis over all feedback in this project.' : `Start with 6–10 CSV rows. Additional CSVs stay inside this temporary workspace until it reaches ${DEMO_COMMENT_ALLOWANCE} records and never carry into another project. It expires after 24 hours.`}</p>{result && !quotaExhausted ? <p><strong>{remaining} comments remain</strong> in this Demo allowance.</p> : null}{quotaExhausted ? <div className="demo-quota" role="status"><strong>Demo upload limit reached.</strong>{result?.quota?.freshDemoAvailable ? <button type="button" className="public-button public-button--dark" onClick={startNewDemo}>Start a new demo</button> : <DemoCooldown resetAt={resetAt!.toISOString()} onCheckReady={checkDemoReady} onStartNewDemo={startNewDemo} />}</div> : <CsvImportPreflight onContinue={runDemo} busy={state === 'running'} error={state === 'failed' ? message : null} maxRows={remaining} />}<section className="demo-analysis-flow" aria-label="Upload and analysis flow"><p className={`demo-status demo-status--${state}`} aria-live="polite">{message || 'Choose a CSV, confirm its column mapping, then start analysis.'}</p><ol className="demo-progress" aria-label="Analysis progress">{[['queued','Upload & map'],['interpreting_clusters','Analyze'],['completed','Ready']].map(([key,label]) => <li key={key} aria-current={stage === key ? 'step' : undefined}>{label}</li>)}</ol></section></section>}</main>
+    {importNotice ? <p className="demo-status demo-import-notice" role="status">{importNotice}</p> : null}
+    <div className="app-frame"><Topbar demoMode projects={[project]} projectId="demo" title={demoPage} dateRange={{ from: dateRange.from || availableDateRange.from, to: dateRange.to || availableDateRange.to }} availableDateRange={availableDateRange} userInitials="D" account={null} dateFilterBusy={false} onProjectChange={() => undefined} onDateRangeChange={async ({ from, to }) => { setDateRange({ from: from || null, to: to || null }); setDemoPage('Overview') }} onLogout={onBack} onMenu={() => setMenuOpen(true)} onExport={() => { if (result?.pdfUrl) window.location.assign(result.pdfUrl) }} onHome={onBack} />
+      <main>{demoPage === 'Curation' && state === 'completed' && token && result ? <CurationWorkspaceContainer projectId={null} dateRange={dateRange} demo={{ token, expiresAt: result.expiresAt, engine: result.engine || 'Voice Map intelligence', coverage: projection.coverage, onChange: () => refreshResult(token) }} /> : (demoPage === 'Overview' || demoPage === 'Voice Map') && state === 'completed' ? <><VoiceMapWorkspace section={demoPage === 'Overview' ? 'overview' : 'voice-map'} mode={demoPage === 'Overview' ? 'overview' : mode} status={visibleThemes.length ? 'ready' : 'empty'} run={{ id: 'temporary-demo', createdAt: new Date().toISOString(), reviewCount: projection.coverage.length, themeCount: confirmedThemes.length, confidence: lead?.confidence || 'insufficient', pipelineVersion: result?.engine || 'Voice Map intelligence' }} voiceMap={voiceMap} themes={visibleThemes} overviewBrief={displayedBrief} selectedThemeId={selectedThemeId} onModeChange={(next) => { if (next !== 'overview') setMode(next) }} onOpenVoiceMap={(next) => { setMode(next); setDemoPage('Voice Map') }} onThemeSelect={setSelectedThemeId} onThemeClose={() => setSelectedThemeId(null)} onOpenReview={() => undefined} onOpenCuration={() => setDemoPage('Curation')} />{demoPage === 'Voice Map' ? <CoverageSummary demo items={projection.coverage} onThemeSelect={setSelectedThemeId} /> : null}{result?.pdfUrl ? <div className="demo-download"><div><strong>Download the temporary demo report.</strong><p>No-store response. No retained download history.</p></div><a className="public-button public-button--dark" href={result.pdfUrl} download>Download demo PDF</a></div> : null}</> : <section className="demo-analysis-panel" aria-label="Temporary demo analysis"><p className="public-kicker">Demo mode · isolated workspace</p><h1>{quotaExhausted ? 'Demo upload allowance used.' : result ? `Add up to ${remaining} more feedback records.` : `Analyze up to ${DEMO_COMMENT_ALLOWANCE} feedback records.`}</h1><p>{result ? 'Additional CSVs stay inside this temporary workspace and never carry into another project. Each accepted import refreshes the analysis over all feedback in this project.' : `A CSV can contain more rows. Voice Lab imports the first ${DEMO_COMMENT_ALLOWANCE} eligible unique records; additional CSVs append until the Demo allowance is reached. It expires after 24 hours.`}</p>{result && !quotaExhausted ? <p><strong>{remaining} comments remain</strong> in this Demo allowance.</p> : null}{quotaExhausted ? <div className="demo-quota" role="status"><strong>Demo upload limit reached.</strong>{result?.quota?.freshDemoAvailable ? <button type="button" className="public-button public-button--dark" onClick={startNewDemo}>Start a new demo</button> : <DemoCooldown resetAt={resetAt!.toISOString()} onCheckReady={checkDemoReady} onStartNewDemo={startNewDemo} />}</div> : <CsvImportPreflight onContinue={runDemo} busy={state === 'running'} error={state === 'failed' ? message : null} maxRows={remaining} />}<section className="demo-analysis-flow" aria-label="Upload and analysis flow"><p className={`demo-status demo-status--${state}`} aria-live="polite">{message || 'Choose a CSV, confirm its column mapping, then start analysis.'}</p><ol className="demo-progress" aria-label="Analysis progress">{[['queued','Upload & map'],['interpreting_clusters','Analyze'],['completed','Ready']].map(([key,label]) => <li key={key} aria-current={stage === key ? 'step' : undefined}>{label}</li>)}</ol></section></section>}</main>
     </div>
   </div>
 }

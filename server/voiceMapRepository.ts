@@ -20,7 +20,7 @@ export async function getVoiceMapArtifact(database: Database, runId: string) {
   const evidence = await database.query<Record<string, unknown>>(
     `SELECT te.theme_id AS "themeId", rs.id, rs.review_id AS "reviewId", rs.quote_text AS quote,
       rs.quote_start AS "quoteStart", rs.quote_end AS "quoteEnd", te.evidence_strength AS strength,
-      te.is_representative AS "isRepresentative", r.body_original AS "originalText", r.rating_value AS rating,
+      te.is_representative AS "isRepresentative", r.body_original AS "originalText", r.rating_value AS rating, r.rating_scale AS "ratingScale",
       r.provider, r.entity_name AS entity, r.language, r.source_created_at AS "sourceCreatedAt", r.source_url AS "sourceUrl"
      FROM theme_evidence te
      JOIN review_signals rs ON rs.id = te.signal_id

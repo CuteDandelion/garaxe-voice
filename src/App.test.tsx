@@ -39,6 +39,30 @@ describe('public routes', () => {
 })
 
 describe('Voice Map workspace', () => {
+  it('renders saved Overview evidence without waiting for the optional intelligence brief or refetching after summary state updates', async () => {
+    const mockedFetch = vi.mocked(fetch)
+    const fallback = mockedFetch.getMockImplementation()!
+    let releaseBrief!: () => void
+    const briefPending = new Promise<Response>((resolve) => {
+      releaseBrief = () => resolve({ ok: true, json: async () => ({ data: {
+        status: 'evidence_only', schemaVersion: 'overview-intelligence-v1', brief: null,
+        message: 'The intelligence brief is unavailable. Evidence context remains available.',
+      } }) } as Response)
+    })
+    mockedFetch.mockImplementation((input, init) => String(input).endsWith('/overview') ? briefPending : fallback(input, init))
+
+    const view = await renderApp()
+    expect(await screen.findByRole('heading', { name: 'Overview', level: 1 }, { timeout: 3_000 })).toBeInTheDocument()
+    expect(screen.getByText('Where the signal came from')).toBeInTheDocument()
+    expect(screen.getByText('Preparing the intelligence brief…')).toBeInTheDocument()
+    const summaryRequests = () => mockedFetch.mock.calls.filter(([input]) => String(input).endsWith('/api/projects/11111111-1111-4111-8111-111111111111/analysis-runs')).length
+    expect(summaryRequests()).toBe(1)
+    releaseBrief()
+    await waitFor(() => expect(screen.getByText('The intelligence brief is unavailable. Evidence context remains available.')).toBeInTheDocument())
+    expect(summaryRequests()).toBe(1)
+    view.unmount()
+  })
+
   it('lands on Overview and keeps Voice Map as a separate top-level section', async () => {
     await renderApp()
     const dashboardHeaders = document.querySelectorAll('.topbar')
@@ -50,7 +74,7 @@ describe('Voice Map workspace', () => {
     expect(within(navigation).getByRole('button', { name: 'Voice Map' })).not.toHaveClass('active')
     expect(await screen.findByText(/Emerging/, { selector: '.dataset-card div' })).toBeInTheDocument()
     expect(screen.queryByRole('tablist', { name: 'Voice Map mode' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Evidence context', level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Overview', level: 1 })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Feedback coverage' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('heading', { name: 'Setup complexity is the clearest friction.' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Inspect evidence' })).toBeInTheDocument()
@@ -232,7 +256,7 @@ describe('Voice Map workspace', () => {
     expect(within(screen.getByRole('complementary', { name: 'Project navigation' })).getByRole('button', { name: 'Overview' })).toHaveClass('active')
   })
 
-  it('keeps an active date-analysis status scoped to the project that started it', async () => {
+  it('keeps a deterministic date projection scoped to its selected project', async () => {
     const request = vi.mocked(fetch)
     request.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
@@ -240,8 +264,6 @@ describe('Voice Map workspace', () => {
         { id: '11111111-1111-4111-8111-111111111111', name: 'First project', primaryDecision: 'positioning' },
         { id: '66666666-6666-4666-8666-666666666666', name: 'Empty project', primaryDecision: 'retention' },
       ] }) } as Response
-      if (path === '/api/analysis-runs' && init?.method === 'POST') return { ok: true, json: async () => ({ data: { id: 'run-pending', status: 'queued' } }) } as Response
-      if (path === '/api/analysis-runs/run-pending') return new Promise<Response>(() => undefined)
       return { ok: true, json: async () => ({ data: path === '/api/auth/status' ? { needsBootstrap: false } : path === '/api/auth/me' ? { sessionId: 'session-1', user: { id: 'user-1', email: 'owner@example.com', displayName: 'Alex Rivera' }, memberships: [{ organizationId: 'org-1', organizationName: 'First project', role: 'owner' }] } : path.includes('/review-summary') ? { total: 0, writtenCount: 0, ratingOnlyCount: 0, providerCount: 0, entityCount: 0, earliestDate: null, latestDate: null, averageRating: null, breakdowns: { providers: [], entities: [], ratings: [], languages: [] } } : [] }) } as Response
     })
     await renderApp()
@@ -249,11 +271,11 @@ describe('Voice Map workspace', () => {
     const dateFilter = screen.getByRole('form', { name: 'Date range filter' })
     fireEvent.change(within(dateFilter).getByLabelText('From'), { target: { value: '2026-01-01' } })
     fireEvent.change(within(dateFilter).getByLabelText('To'), { target: { value: '2026-01-02' } })
-    fireEvent.click(within(dateFilter).getByRole('button', { name: 'Analyze range' }))
-    expect(await screen.findByText('Analyzing range…')).toBeInTheDocument()
+    fireEvent.click(within(dateFilter).getByRole('button', { name: 'Apply range' }))
+    expect(request).not.toHaveBeenCalledWith('/api/analysis-runs', expect.objectContaining({ method: 'POST' }))
+    expect(await screen.findByRole('button', { name: 'Filter review period Jan 2026 – Jan 2026' })).toBeInTheDocument()
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Switch project from top bar' }), { target: { value: '66666666-6666-4666-8666-666666666666' } })
-    expect(screen.queryByText('Analyzing range…')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Filter review period No review dates' })).toBeInTheDocument()
   })
 
@@ -267,7 +289,7 @@ describe('Voice Map workspace', () => {
     expect(fetch).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }))
   })
 
-  it('opens the upper account menu with email and applies an immutable date-window run', async () => {
+  it('opens the upper account menu with email and applies a date projection without a new run', async () => {
     await renderApp()
     fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
     const account = screen.getByRole('region', { name: 'Account details' })
@@ -278,12 +300,9 @@ describe('Voice Map workspace', () => {
     const dateFilter = screen.getByRole('form', { name: 'Date range filter' })
     fireEvent.change(within(dateFilter).getByLabelText('From'), { target: { value: '2026-03-01' } })
     fireEvent.change(within(dateFilter).getByLabelText('To'), { target: { value: '2026-05-31' } })
-    fireEvent.click(within(dateFilter).getByRole('button', { name: 'Analyze range' }))
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/analysis-runs', expect.objectContaining({
-      method: 'POST',
-      body: expect.stringContaining('"dateFrom":"2026-03-01"'),
-    })))
-    expect(fetch).toHaveBeenCalledWith('/api/analysis-runs', expect.objectContaining({ body: expect.stringContaining('"dateTo":"2026-05-31"') }))
+    fireEvent.click(within(dateFilter).getByRole('button', { name: 'Apply range' }))
+    expect(fetch).not.toHaveBeenCalledWith('/api/analysis-runs', expect.objectContaining({ method: 'POST' }))
+    expect(screen.getByRole('button', { name: 'Filter review period Mar 2026 – May 2026' })).toBeInTheDocument()
   })
 
   it('explains an inverted evidence window instead of silently blocking submission', async () => {
@@ -296,7 +315,7 @@ describe('Voice Map workspace', () => {
     fireEvent.change(to, { target: { value: '2026-05-01' } })
 
     expect(dateFilter).toHaveAttribute('novalidate')
-    fireEvent.click(within(dateFilter).getByRole('button', { name: 'Analyze range' }))
+    fireEvent.click(within(dateFilter).getByRole('button', { name: 'Apply range' }))
     expect(screen.getByRole('alert')).toHaveTextContent('The start date must be before the end date.')
   })
 

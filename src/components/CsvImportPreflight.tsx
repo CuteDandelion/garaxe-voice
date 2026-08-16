@@ -67,7 +67,6 @@ export function CsvImportPreflight({ onContinue, busy = false, error = null, max
         try {
           const prepared = await prepareImportFile(file)
           const parsed = parseCsv(prepared.rawCsv)
-          if (maxRows && parsed.rows.length > maxRows) throw new Error(`This import is limited to ${maxRows} feedback rows.`)
           setFileName(file.name); setRawCsv(prepared.rawCsv); setHeaders(parsed.headers); setRows(parsed.rows)
           setMapping(detectMapping(parsed.headers)); setOriginalSource(prepared.originalSource)
         } catch (reason) {
@@ -90,6 +89,7 @@ export function CsvImportPreflight({ onContinue, busy = false, error = null, max
         </div>)}
       </div>
       <section className="csv-preflight__rows" aria-label="Row preview"><h3>Row preview</h3><div>{rows.slice(0, 3).map((row, index) => <p key={index}><strong>Row {index + 2}</strong>{requiredCanonicalFields.map((field) => { const column = headers.find((header) => mapping[header] === field); return <span key={field}>{column ? row[column] || 'Missing' : 'Not mapped'}</span> })}</p>)}</div></section>
+      {maxRows && rows.length > maxRows ? <p role="status">This CSV has {rows.length} rows. Voice Lab will import the first {maxRows} eligible unique {maxRows === 1 ? 'record' : 'records'}; the server will report any rows not imported.</p> : null}
       {(result.columnErrors.length || result.rowErrors.length) ? <div className="csv-preflight__errors" role="alert"><strong>Resolve these before analysis</strong><ul>{[...result.columnErrors, ...result.rowErrors.slice(0, 20)].map((item, index) => <li key={`${item.code}-${index}`}>{'row' in item ? `Row ${item.row}, ${canonicalFieldLabels[item.column]}: ${item.message}` : item.message}</li>)}</ul></div> : null}
       <button className="primary-action" type="button" disabled={!result.valid || !originalSource || busy} onClick={() => originalSource && void onContinue({ fileName, rawCsv, mapping, originalSource, rows })}>{busy ? 'Processing CSV…' : continueLabel} <Icon icon={ArrowRight} size={14} /></button>
     </div> : null}

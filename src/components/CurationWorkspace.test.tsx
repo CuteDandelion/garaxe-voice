@@ -85,6 +85,21 @@ describe('CurationWorkspace', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Review every required theme.')
   })
 
+  it('highlights persisted UTF-16 evidence offsets after an emoji', () => {
+    const originalText = 'The delivery bag leaked curry across the doorstep 😞 and nobody answered the phone. The container lid had opened.'
+    render(<CurationWorkspace {...props({
+      selectedThemeId: 'theme-1',
+      themes: [{ ...props().themes[0], evidence: [{
+        ...props().themes[0].evidence[0],
+        quote: 'The container lid had opened.', quoteStart: 84, quoteEnd: 113, originalText,
+      }] }],
+    })} />)
+
+    expect(screen.getByText('The container lid had opened.', { selector: 'mark' })).toBeInTheDocument()
+    expect(screen.getByText((_, element) => element?.tagName === 'BLOCKQUOTE'
+      && element.textContent === `“${originalText}”`)).toBeInTheDocument()
+  })
+
   it('offers report readiness only after every required bucket is reviewed', () => {
     const callbacks = handlers()
     render(<CurationWorkspace {...props({

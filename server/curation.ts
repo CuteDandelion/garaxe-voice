@@ -45,6 +45,7 @@ export type CuratedEvidence = {
   entity: string | null
   provider: string
   rating: number | null
+  ratingScale?: number | null
   sourceCreatedAt: string | Date | null
   confidence: number
   pinned: boolean
@@ -117,6 +118,7 @@ type EvidenceRow = {
   entity: string | null
   provider: string
   rating: number | null
+  ratingScale: number | null
   sourceCreatedAt: string | Date | null
 }
 
@@ -266,7 +268,7 @@ async function loadMachineThemes(database: Database, runId: string) {
   const evidence = await database.query<EvidenceRow>(
     `SELECT te.theme_id AS "themeId", rs.id AS "signalId", rs.review_id AS "reviewId",
       rs.quote_text AS quote, rs.quote_start AS "quoteStart", rs.quote_end AS "quoteEnd", rs.confidence,
-      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating,
+      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating, r.rating_scale AS "ratingScale",
       r.source_created_at AS "sourceCreatedAt"
      FROM theme_evidence te
      JOIN themes t ON t.id = te.theme_id
@@ -280,7 +282,7 @@ async function loadMachineThemes(database: Database, runId: string) {
     `SELECT NULL::uuid AS "themeId", rs.id AS "signalId", rs.review_id AS "reviewId", rs.label,
       rs.signal_type AS "signalType", rs.quote_text AS quote, rs.quote_start AS "quoteStart",
       rs.quote_end AS "quoteEnd", rs.confidence, rs.attributes,
-      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating,
+      r.body_original AS "originalText", r.entity_name AS entity, r.provider, r.rating_value AS rating, r.rating_scale AS "ratingScale",
       r.source_created_at AS "sourceCreatedAt"
      FROM review_signals rs JOIN reviews r ON r.id = rs.review_id
      WHERE rs.analysis_run_id = $1
@@ -302,7 +304,7 @@ async function loadMachineThemes(database: Database, runId: string) {
     if (emerging.rows.length > 0 && (validationStatus !== 'validated' || interpretation?.publicationAction !== 'publish' || interpretation.groupingAction === 'split')) return []
     const themeEvidence = evidence.rows.filter((item) => item.themeId === theme.id).map((item) => ({
       signalId: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd,
-      originalText: item.originalText, entity: item.entity, provider: item.provider, rating: item.rating,
+      originalText: item.originalText, entity: item.entity, provider: item.provider, rating: item.rating, ratingScale: item.ratingScale,
       sourceCreatedAt: item.sourceCreatedAt, confidence: item.confidence, pinned: false, excluded: false,
     }))
     return [{
@@ -355,7 +357,7 @@ async function loadMachineThemes(database: Database, runId: string) {
       signalTypes, categories, sentiment: outcome?.sentiment || 'neutral', confidence: 'Emerging', validationStatus: 'validated', status: 'pending',
       evidence: [{
         signalId: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd,
-        originalText: item.originalText, entity: item.entity, provider: item.provider, rating: item.rating,
+        originalText: item.originalText, entity: item.entity, provider: item.provider, rating: item.rating, ratingScale: item.ratingScale,
         sourceCreatedAt: item.sourceCreatedAt, confidence: item.confidence, pinned: false, excluded: false,
       }], groupingSuggestion: null, publishable: false, origin: 'model_confirmed',
       provenance: { createdBy: null, createdAt: null, sourceReviewIds: [item.reviewId] },

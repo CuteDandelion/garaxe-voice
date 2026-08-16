@@ -31,4 +31,15 @@ describe('CSV import preflight', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/CSV files only/i))
     expect(screen.queryByRole('table', { name: 'CSV mapping preview' })).not.toBeInTheDocument()
   })
+
+  it('accepts a larger Demo CSV for server-side quota selection and explains the partial import', async () => {
+    render(<CsvImportPreflight onContinue={vi.fn()} maxRows={1} />)
+    const file = new File([
+      'review_id,source,review_text\na-1,Support,First sufficiently detailed customer comment.\na-2,Support,Second sufficiently detailed customer comment.',
+    ], 'feedback.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByLabelText('Choose CSV file'), { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByRole('table', { name: 'CSV mapping preview' })).toBeInTheDocument())
+    expect(screen.queryByText(/limited to 1 feedback rows/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/first 1 eligible unique record/i)
+  })
 })

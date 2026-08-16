@@ -42,6 +42,16 @@ describe('AnalysisWorkspace processing progress', () => {
     expect(screen.queryByText(/jobs complete|active \/ waiting|interpreted themes|run 510f63e5|governed fallback|qwen|LLM|opencode/i)).not.toBeInTheDocument()
   })
 
+  it('never moves visible analysis progress backwards when later work is discovered', () => {
+    const props = processingProps()
+    const { rerender } = render(<AnalysisWorkspace {...props} llmProgress={{ ...props.llmProgress!, percent: 83 }} />)
+
+    rerender(<AnalysisWorkspace {...props} llmProgress={{ ...props.llmProgress!, total: 30, completed: 14, remaining: 16, percent: 47 }} />)
+
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '83')
+    expect(screen.getByText('83%')).toBeInTheDocument()
+  })
+
   it('does not describe failed jobs as governed fallback', () => {
     const props = processingProps()
     render(<AnalysisWorkspace {...props} llmProgress={{ ...props.llmProgress!, fallback: 0, failed: 1 }} />)

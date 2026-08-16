@@ -278,6 +278,7 @@ export type OverviewBriefResult = {
 export type AnalysisCoverageItem = {
   reviewId: string
   originalText: string
+  source?: { provider: string; entity: string | null; rating: number | null; ratingScale: number | null; language: string | null; sourceCreatedAt: string | null; sourceUrl: string | null }
   disposition: 'recurring' | 'emerging' | 'user_curated' | 'error' | 'excluded'
   reason: string
   themeIds: string[]
@@ -329,7 +330,7 @@ export type VoiceMapArtifactResponse = {
         groupingReason?: string | null
       }
     }
-    evidence: Array<{ id: string; reviewId: string; quote: string; quoteStart?: number; quoteEnd?: number; originalText?: string; rating: number | null; provider?: string; entity: string | null; language: string | null; sourceCreatedAt: string | null; sourceUrl?: string | null; strength: number; isRepresentative: boolean }>
+    evidence: Array<{ id: string; reviewId: string; quote: string; quoteStart?: number; quoteEnd?: number; originalText?: string; rating: number | null; ratingScale?: number | null; provider?: string; entity: string | null; language: string | null; sourceCreatedAt: string | null; sourceUrl?: string | null; strength: number; isRepresentative: boolean }>
   }>
 }
 
@@ -338,7 +339,7 @@ type EngineInsight = { title: string; narrative: string; supportingThemeIds: str
 export type CurationActionType = 'approve_theme' | 'reject_theme' | 'edit_theme' | 'pin_evidence' | 'exclude_evidence' | 'merge_themes' | 'split_theme' | 'create_custom_theme' | 'move_evidence' | 'restore_revision' | 'mark_ready'
 export type CurationSession = { id: string; analysisRunId: string; status: 'in_progress' | 'ready'; revision: number; createdAt: string; readyAt: string | null }
 export type CurationAction = { id: string; sessionId: string; analysisRunId: string; sequence: number; actionType: CurationActionType; payload: Record<string, unknown>; createdAt: string }
-export type CuratedEvidence = { signalId: string; reviewId: string; quote: string; quoteStart: number; quoteEnd: number; originalText: string; entity: string | null; provider: string; rating: number | null; sourceCreatedAt: string | null; confidence: number; pinned: boolean; excluded: boolean }
+export type CuratedEvidence = { signalId: string; reviewId: string; quote: string; quoteStart: number; quoteEnd: number; originalText: string; entity: string | null; provider: string; rating: number | null; ratingScale?: number | null; sourceCreatedAt: string | null; confidence: number; pinned: boolean; excluded: boolean }
 export type EffectiveTheme = {
   id: string; machineThemeId: string | null; originThemeIds: string[]; rank: number; name: string; summary: string
   topic?: string; primarySignalType?: PrimarySemanticCategory; signalTaxonomyVersion?: string; proposedTypeLabel?: string | null; type: string; signalTypes?: string[]; categories?: PrimarySemanticCategory[]; sentiment: VoiceSentiment; confidence: string; validationStatus: string

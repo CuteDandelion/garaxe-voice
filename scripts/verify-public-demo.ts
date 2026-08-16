@@ -3,6 +3,7 @@ import { assertHeldOutQuality, evaluateHeldOutCoverage, heldOutDemoRunIds, heldO
 import { independentHoldoutInput } from './voice-map-independent-10-input'
 import { evaluateIndependentHoldout } from './voice-map-independent-10-rubric'
 import { incrementalFeedbackBatches } from './voice-map-incremental-20-input'
+import { detectMapping, parseCsv, rowsToCsv } from '../src/lib/csv'
 
 const baseUrl = (process.env.VOICE_MAP_BASE_URL || 'http://127.0.0.1:3001').replace(/\/$/, '')
 const representativeCases = [
@@ -96,13 +97,26 @@ const controlledCoverage: ControlledCoverageItem[] = []
 const heldOutCoverage: HeldOutCoverageItem[] = []
 const independentCoverage: any[] = []
 const incrementalRuns: Array<{ token: string; coverage: any[]; name: string }> = []
+let incrementalToken: string | null = null
+const incrementalExpectedTexts: string[] = []
 for (const sample of selectedCases) {
-  const start = await fetch(`${baseUrl}/api/demo/analysis-runs`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ feedback: sample.comments.join('\n') }),
+  const incrementalBatch = incrementalFeedbackBatches.find((batch) => batch.fileName === sample.name)
+  const rawCsv = rowsToCsv([
+    ['review_id', 'source', 'review_text', 'review_date', 'entity', 'source_url'],
+    ...sample.comments.map((text, index) => {
+      const item = incrementalBatch?.comments[index]
+      return [item?.id || `${sample.name}-${index + 1}`, incrementalBatch?.source || 'public_demo', text,
+        item?.date || '', item?.entity || '', item?.sourceUrl || '']
+    }),
+  ])
+  const mapping = detectMapping(parseCsv(rawCsv).headers)
+  const start = await fetch(incrementalToken ? `${baseUrl}/api/demo/analysis-runs/${incrementalToken}/imports` : `${baseUrl}/api/demo/analysis-runs`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileName: sample.name.endsWith('.csv') ? sample.name : `${sample.name}.csv`, rawCsv, mapping }),
   })
   const created = await start.json() as { data?: { token: string }; error?: { code?: string; message?: string } }
   if (start.status === 503) throw new Error(`BLOCKED: ${created.error?.code || 'DEMO_ANALYSIS_UNAVAILABLE'} — the server-side analysis-engine contract is unavailable.`)
   if (!start.ok || !created.data) throw new Error(`${sample.name} demo start failed with HTTP ${start.status}: ${created.error?.message || 'unknown error'}`)
+  if (process.env.VOICE_MAP_E2E_MATRIX === 'incremental') incrementalToken = created.data.token
 
   let completed: { status: string; engine?: string; themes?: Array<{ name?: string; evidence?: Array<{ originalText: string; quote: string }> }>; coverage?: Array<ControlledCoverageItem & { disposition: string; reason: string; originalText: string; themeIds: string[]; signals: Array<{ label: string; topic?: string | null; quote: string; confidence: number; interpretedBy: string; signalType?: string; signalTypes?: string[]; sentiment?: string; category?: string; categories?: string[] }> }>; pdfUrl?: string; message?: string } | null = null
   for (let attempt = 0; attempt < 270; attempt += 1) {
@@ -118,10 +132,12 @@ for (const sample of selectedCases) {
   if (!completed || completed.engine !== 'llm-interpreted-theme-engine-v1' || !hasExactCategorizedEvidence || !completed.pdfUrl) {
     throw new Error(`${sample.name} did not produce a same-engine evidence-backed result within 180 seconds.`)
   }
-  if (completed.coverage?.length !== sample.comments.length || completed.coverage.some((item) => !item.disposition || !item.reason)) {
+  const expectedTexts = process.env.VOICE_MAP_E2E_MATRIX === 'incremental'
+    ? (incrementalExpectedTexts.push(...sample.comments), [...incrementalExpectedTexts].sort())
+    : [...sample.comments].map((text) => text.trim()).sort()
+  if (completed.coverage?.length !== expectedTexts.length || completed.coverage.some((item) => !item.disposition || !item.reason)) {
     throw new Error(`${sample.name} silently dropped feedback.`)
   }
-  const expectedTexts = [...sample.comments].map((text) => text.trim()).sort()
   const actualTexts = completed.coverage.map((item) => item.originalText.trim()).sort()
   if (JSON.stringify(actualTexts) !== JSON.stringify(expectedTexts)) throw new Error(`${sample.name} did not account for every submitted comment exactly once.`)
   if (completed.coverage.some((item) => item.signals.some((signal) => !item.originalText.includes(signal.quote)))) {
@@ -224,16 +240,11 @@ if (process.env.VOICE_MAP_E2E_MATRIX === 'independent-realistic') {
 }
 
 if (process.env.VOICE_MAP_E2E_MATRIX === 'incremental') {
-  if (incrementalRuns.length !== 2 || incrementalRuns[0].token === incrementalRuns[1].token) throw new Error('Incremental Demo submissions did not create two isolated sessions.')
+  if (incrementalRuns.length !== 2 || incrementalRuns[0].token !== incrementalRuns[1].token) throw new Error('Incremental Demo submissions did not remain in one temporary project.')
   const first = new Set(incrementalRuns[0].coverage.map((item) => item.originalText))
   const second = new Set(incrementalRuns[1].coverage.map((item) => item.originalText))
-  if (first.size !== 10 || second.size !== 10 || [...first].some((text) => second.has(text))) throw new Error('Incremental Demo submissions accumulated, duplicated, or crossed feedback.')
-  const firstCuration = await fetch(`${baseUrl}/api/demo/analysis-runs/${incrementalRuns[0].token}/curation`).then((response) => response.json()) as any
-  if (!firstCuration.data?.effectiveThemes?.some((item: any) => item.name === 'Temporary correction 1')
-    || firstCuration.data.effectiveThemes.some((item: any) => item.name === 'Temporary correction 2')) {
-    throw new Error('Incremental Demo Curation crossed session boundaries.')
-  }
-  console.log('PASS incremental Demo: two separate 10-comment sessions, exact-once coverage, isolated temporary Curation, no accumulation.')
+  if (first.size !== 10 || second.size !== 20 || [...first].some((text) => !second.has(text))) throw new Error('Incremental Demo submissions did not accumulate exactly once.')
+  console.log('PASS incremental Demo: 10 + 10 comments accumulated in one temporary project with exact-once coverage.')
 }
 
 const protectedResponse = await fetch(`${baseUrl}/api/projects`)

@@ -7,12 +7,15 @@ import {
   Lightbulb,
   ListChecks,
   MessageSquareQuote,
+  PanelLeftClose,
+  PanelLeftOpen,
   Rows3,
   ScanSearch,
   ShieldCheck,
   Sparkles,
   Target,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Icon } from './Icon'
 import type { Project } from '../lib/api'
 
@@ -55,10 +58,12 @@ function initials(name: string) {
 }
 
 export function Sidebar({ open, projects, projectId, activeLabel, dataset, account, onNavigate, onProjectChange, onNewProject, onLogout, demoMode = false, demoCurationReady = true, waitlistMonitoring = false }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(false)
   const confidence = dataset.confidence ? dataset.confidence.charAt(0).toUpperCase() + dataset.confidence.slice(1).toLowerCase() : null
   const accountLabel = account?.displayName || account?.email || 'Signed-in user'
   return (
-    <aside className={`sidebar ${open ? 'is-open' : ''}`} aria-label="Project navigation">
+    <aside className={`sidebar ${open ? 'is-open' : ''} ${collapsed ? 'is-collapsed' : ''}`} aria-label="Project navigation">
+      <button type="button" className="sidebar-collapse" aria-label={`${collapsed ? 'Expand' : 'Collapse'} navigation`} aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}><Icon icon={collapsed ? PanelLeftOpen : PanelLeftClose} /></button>
       <div className="project-switcher">
         <span>Project</span>
         <div>
@@ -71,7 +76,7 @@ export function Sidebar({ open, projects, projectId, activeLabel, dataset, accou
       <nav className="side-nav">
         {[...nav, ...(waitlistMonitoring ? [[ShieldCheck, 'Waitlist'] as const] : [])].map(([icon, label]) => {
           const disabled = unavailable.has(label) || (demoMode && (!['Overview', 'Voice Map', 'Analysis', 'Curation'].includes(label) || (label === 'Curation' && !demoCurationReady)))
-          return <button className={activeLabel === label ? 'active' : ''} key={label} disabled={disabled} aria-disabled={disabled} onClick={() => onNavigate(label)}>
+          return <button className={activeLabel === label ? 'active' : ''} key={label} disabled={disabled} aria-disabled={disabled} aria-label={collapsed ? label : undefined} title={collapsed ? label : undefined} onClick={() => onNavigate(label)}>
             <Icon icon={icon} />
             <span>{label}</span>
           </button>

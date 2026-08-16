@@ -24,9 +24,11 @@ import {
   type CurationSplitDraft,
   type CurationTheme,
 } from './CurationWorkspace'
+import { projectDateRange, projectThemeSummary } from '../lib/dateProjection'
 
 type Props = {
   projectId: string | null
+  dateRange?: { from: string | null; to: string | null }
   demo?: { token: string; expiresAt: string; engine: string; coverage: AnalysisCoverageItem[]; onChange?: () => void | Promise<void> }
 }
 
@@ -48,28 +50,32 @@ const primaryCategory = (value: string | undefined): PrimarySemanticCategory => 
   return 'pain'
 }
 
-export function adaptThemes(projection: CurationProjection, artifact: VoiceMapArtifactResponse | null): CurationTheme[] {
+export function adaptThemes(projection: CurationProjection, artifact: VoiceMapArtifactResponse | null, visibleReviewIds?: Set<string>): CurationTheme[] {
   const source = new Map((artifact?.themes || []).map((theme) => [theme.id, theme]))
   const machine = new Map(projection.machineThemes.map((theme) => [theme.id, theme]))
   return projection.effectiveThemes
     .filter((theme) => theme.status !== 'consumed' && theme.status !== 'not_reviewable')
-    .map((theme) => {
+    .flatMap((theme) => {
+      const evidence = theme.evidence.filter((item) => !visibleReviewIds || visibleReviewIds.has(item.reviewId))
+      if (visibleReviewIds && !evidence.length) return []
       const sourceTheme = source.get(theme.machineThemeId || theme.id)
       const machineTheme = machine.get(theme.machineThemeId || theme.id)
+      const machineSummary = visibleReviewIds ? projectThemeSummary(machineTheme?.summary || theme.summary, new Set(evidence.map((item) => item.reviewId)).size) : machineTheme?.summary || theme.summary
+      const effectiveSummary = visibleReviewIds ? projectThemeSummary(theme.summary, new Set(evidence.map((item) => item.reviewId)).size) : theme.summary
       const edited = theme.origin === 'user_curated' || !theme.machineThemeId
         || Boolean(machineTheme && (theme.name !== machineTheme.name || theme.summary !== machineTheme.summary))
       return {
         id: theme.id,
         rank: theme.rank,
-        machine: { name: machineTheme?.name || theme.name, summary: machineTheme?.summary || theme.summary },
-        curated: theme.origin === 'user_curated' || edited || !theme.machineThemeId ? { name: theme.name, summary: theme.summary } : null,
+        machine: { name: machineTheme?.name || theme.name, summary: machineSummary },
+        curated: theme.origin === 'user_curated' || edited || !theme.machineThemeId ? { name: theme.name, summary: effectiveSummary } : null,
         decision: theme.status === 'rejected' ? 'rejected' : edited ? 'edited' : theme.status === 'approved' ? 'approved' : 'pending',
         confidence: confidence(theme.confidence),
         category: primaryCategory(machineTheme?.categories?.[0] || theme.categories?.[0] || theme.type),
-        reviewCount: new Set(theme.evidence.map((item) => item.reviewId)).size,
+        reviewCount: new Set(evidence.map((item) => item.reviewId)).size,
         groupingSuggestion: theme.groupingSuggestion,
         origin: theme.origin,
-        evidence: theme.evidence.map((item) => ({
+        evidence: evidence.map((item) => ({
           id: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd,
           originalText: item.originalText, entity: item.entity, provider: item.provider,
           rating: item.rating, sourceCreatedAt: item.sourceCreatedAt,
@@ -87,7 +93,7 @@ export function adaptActivity(projection: CurationProjection): CurationActivity[
   }))
 }
 
-export function CurationWorkspaceContainer({ projectId, demo }: Props) {
+export function CurationWorkspaceContainer({ projectId, dateRange = { from: null, to: null }, demo }: Props) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [projection, setProjection] = useState<CurationProjection | null>(null)
   const [artifact, setArtifact] = useState<VoiceMapArtifactResponse | null>(null)
@@ -135,20 +141,24 @@ export function CurationWorkspaceContainer({ projectId, demo }: Props) {
     } finally { setSubmitting(false) }
   }, [projection?.session, demo])
 
-  const themes = useMemo(() => projection ? adaptThemes(projection, artifact) : [], [projection, artifact])
-  const gateErrors = projection && !projection.readiness.canMarkReady && !projection.readiness.isReady
+  const visibleCoverage = useMemo(() => projectDateRange([], demo?.coverage || coverage, dateRange).coverage, [coverage, dateRange.from, dateRange.to, demo?.coverage])
+  const visibleReviewIds = useMemo(() => new Set(visibleCoverage.map((item) => item.reviewId)), [visibleCoverage])
+  const themes = useMemo(() => projection ? adaptThemes(projection, artifact, dateRange.from || dateRange.to ? visibleReviewIds : undefined) : [], [projection, artifact, dateRange.from, dateRange.to, visibleReviewIds])
+  const filtered = Boolean(dateRange.from || dateRange.to)
+  const reviewedThemes = themes.filter((theme) => theme.decision !== 'pending').length
+  const gateErrors = filtered ? ['Clear the date filter before publishing the full evidence set.'] : projection && !projection.readiness.canMarkReady && !projection.readiness.isReady
     ? [`${projection.readiness.pending} validated theme${projection.readiness.pending === 1 ? '' : 's'} still need a decision.`, ...(projection.readiness.publishable ? [] : ['Approve at least one theme with usable evidence.'])]
     : []
 
   return <CurationWorkspace
     status={status}
-    run={projection ? { id: artifact?.run.id || projection.session?.analysisRunId || 'temporary-demo', createdAt: artifact?.run.createdAt || projection.session?.createdAt || demo?.expiresAt || '', analysisVersion: artifact?.synthesisVersion || demo?.engine || 'Voice Map intelligence', pipelineVersion: artifact?.run.pipelineVersion || demo?.engine || 'Voice Map intelligence', totalThemes: projection.readiness.validatedMachineThemes, reviewedThemes: projection.readiness.resolved, requiredThemes: projection.readiness.validatedMachineThemes, ready: projection.readiness.isReady } : null}
+    run={projection ? { id: artifact?.run.id || projection.session?.analysisRunId || 'temporary-demo', createdAt: artifact?.run.createdAt || projection.session?.createdAt || demo?.expiresAt || '', analysisVersion: artifact?.synthesisVersion || demo?.engine || 'Voice Map intelligence', pipelineVersion: artifact?.run.pipelineVersion || demo?.engine || 'Voice Map intelligence', totalThemes: filtered ? themes.length : projection.readiness.validatedMachineThemes, reviewedThemes: filtered ? reviewedThemes : projection.readiness.resolved, requiredThemes: filtered ? themes.length : projection.readiness.validatedMachineThemes, ready: !filtered && projection.readiness.isReady } : null}
     themes={themes} activity={projection ? adaptActivity(projection) : []} selectedThemeId={selectedThemeId}
     editDraft={editDraft} mergeSelection={mergeSelection} mergeDraft={mergeDraft} splitDraft={splitDraft}
     gateErrors={gateErrors} error={error} submitting={submitting}
     demoMode={Boolean(demo)} expiresAt={demo?.expiresAt} revision={projection?.session?.revision || 0}
-    coverageItems={demo?.coverage || coverage}
-    emergingEvidence={(demo?.coverage || coverage).filter((item) => item.disposition === 'emerging' && item.signals.length > 0).map((item) => ({ reviewId: item.reviewId, originalText: item.originalText, reason: item.reason }))}
+    coverageItems={visibleCoverage}
+    emergingEvidence={visibleCoverage.filter((item) => item.disposition === 'emerging' && item.signals.length > 0).map((item) => ({ reviewId: item.reviewId, originalText: item.originalText, reason: item.reason }))}
     onThemeSelect={setSelectedThemeId} onThemeClose={() => setSelectedThemeId(null)}
     onApprove={(themeId) => void submit('approve_theme', { themeId })}
     onApproveMany={(themeIds) => { void themeIds.reduce((chain, themeId) => chain.then(() => submit('approve_theme', { themeId })), Promise.resolve()) }}

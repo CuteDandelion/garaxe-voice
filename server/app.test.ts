@@ -1198,6 +1198,46 @@ batch-1-end,csv_import,Lab,4,"A repeated external identifier must not duplicate 
 })
 
 describe('append-only human curation API', () => {
+  it('moves one aspect membership without moving its sibling and restores both exactly', async () => {
+    const fixture = await createCurationFixture('curation-aspect-sibling')
+    const database = await getDatabase()
+    const before = await apiFetch(`${baseUrl}/api/analysis-runs/${fixture.runId}/curation`).then((response) => response.json())
+    const [sourceTheme, targetTheme] = before.data.machineThemes.filter((theme: { evidence: unknown[] }) => theme.evidence.length > 0)
+    const source = await database.query<{ signalId: string; reviewId: string; quote: string; quoteStart: number; quoteEnd: number }>(
+      `SELECT id AS "signalId",review_id AS "reviewId",quote_text AS quote,quote_start AS "quoteStart",quote_end AS "quoteEnd"
+       FROM review_signals WHERE id=$1`, [sourceTheme.evidence[0].signalId],
+    )
+    const sourceSignal = source.rows[0]!
+    const siblingId = `${fixture.runId}:aspect-sibling`
+    await database.query(
+      `INSERT INTO review_signals
+        (id,analysis_run_id,review_id,signal_type,label,normalized_aspect,sentiment,confidence,quote_text,quote_start,quote_end,attributes,extractor_version)
+       SELECT $1,analysis_run_id,review_id,'desired_outcome','Sibling aspect','sibling aspect','neutral',.49,quote_text,quote_start,quote_end,
+         $2::jsonb,extractor_version FROM review_signals WHERE id=$3`,
+      [siblingId, '{}', sourceSignal.signalId],
+    )
+    await database.query(
+      `INSERT INTO theme_evidence (theme_id,signal_id,review_id,evidence_strength,is_representative) VALUES ($1,$2,$3,.49,false)`,
+      [targetTheme.id, siblingId, sourceSignal.reviewId],
+    )
+    const { session } = await createCuration(fixture.runId)
+    const projected = await apiFetch(`${baseUrl}/api/analysis-runs/${fixture.runId}/curation`).then((response) => response.json())
+    expect(projected.data.effectiveThemes.map((theme: { id: string }) => theme.id)).toEqual(expect.arrayContaining([sourceTheme.id, targetTheme.id]))
+    const moved = await curate(session.id, 'move_evidence', {
+      fromThemeId: sourceTheme.id, toThemeId: targetTheme.id, signalId: sourceSignal.signalId,
+    })
+    expect(moved.response.status, JSON.stringify(moved.payload)).toBe(201)
+    const movedTarget = moved.payload.data.projection.effectiveThemes.find((theme: { id: string }) => theme.id === targetTheme.id)
+    expect(movedTarget.evidence.filter((item: { reviewId: string }) => item.reviewId === sourceSignal.reviewId)
+      .map((item: { signalId: string }) => item.signalId).sort()).toEqual([siblingId, sourceSignal.signalId].sort())
+    const restored = await curate(session.id, 'restore_revision', { revision: 0 })
+    const restoredSource = restored.payload.data.projection.effectiveThemes.find((theme: { id: string }) => theme.id === sourceTheme.id)
+    const restoredTarget = restored.payload.data.projection.effectiveThemes.find((theme: { id: string }) => theme.id === targetTheme.id)
+    expect(restoredSource.evidence.some((item: { signalId: string }) => item.signalId === sourceSignal.signalId)).toBe(true)
+    expect(restoredTarget.evidence.some((item: { signalId: string }) => item.signalId === siblingId)).toBe(true)
+    expect(restoredTarget.evidence.some((item: { signalId: string }) => item.signalId === sourceSignal.signalId)).toBe(false)
+  })
+
   it('returns an evidence-cited overview brief without letting the model alter deterministic map data', async () => {
     const fixture = await createCurationFixture('overview-intelligence')
     const projection = await apiFetch(`${baseUrl}/api/analysis-runs/${fixture.runId}/curation`).then((response) => response.json())
@@ -1316,7 +1356,9 @@ describe('append-only human curation API', () => {
     const covered = coverage.data.find((item: { reviewId: string }) => item.reviewId === signal.reviewId)
     expect(covered).toMatchObject({ signals: [{
       label: 'Silent state distress', category: 'emotion', sentiment: 'negative', quote: signal.quote,
-    }] })
+    }], source: {
+      provider: 'google_business', ratingScale: 5, language: 'en', sourceCreatedAt: expect.stringMatching(/^2026-/),
+    } })
 
     const curation = await apiFetch(`${baseUrl}/api/analysis-runs/${fixture.runId}/curation`).then((response) => response.json())
     const bucket = curation.data.machineThemes.find((theme: { evidence: Array<{ signalId: string }> }) =>

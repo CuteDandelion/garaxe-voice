@@ -12,6 +12,73 @@ async function submitDemoCsv(rawCsv = sampleCsv, fileName = 'demo.csv') {
 }
 
 describe('PublicLanding', () => {
+  it('shows a completed Demo map while its optional intelligence brief is still loading', async () => {
+    const token = 'b'.repeat(43)
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input)
+      if (path === '/api/demo/analysis-runs' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { token, status: 'queued', expiresAt: '2026-08-14T10:00:00Z' } }), { status: 202 })
+      }
+      if (path === `/api/demo/analysis-runs/${token}`) {
+        return new Response(JSON.stringify({ data: {
+          status: 'completed', stage: 'completed', demo: true,
+          themes: [{ id: 'theme-1', name: 'Visible progress', summary: 'Customers need progress updates.', type: 'pain', confidence: 'high', evidence: [{ reviewId: 'review-1', quote: 'Tell me what happens next.', originalText: 'Tell me what happens next.', provider: 'csv_import', sourceCreatedAt: '2026-08-01T00:00:00Z' }] }],
+          coverage: [{ reviewId: 'review-1', originalText: 'Tell me what happens next.', disposition: 'recurring', reason: 'Grounded signal.', themeIds: ['theme-1'], signals: [] }],
+        } }), { status: 200 })
+      }
+      if (path === `/api/demo/analysis-runs/${token}/overview`) return new Promise<Response>(() => {})
+      throw new Error(`Unexpected request: ${path}`)
+    })
+
+    render(<PublicDemo onBack={vi.fn()} onLogin={vi.fn()} />)
+    await submitDemoCsv()
+
+    expect(await screen.findByRole('button', { name: 'Overview' })).toHaveClass('active')
+    expect(screen.getByText('Preparing the intelligence brief…')).toBeInTheDocument()
+  })
+
+  it('filters a completed Demo result by date without starting another analysis', async () => {
+    const token = 'd'.repeat(43)
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input)
+      if (path === '/api/demo/analysis-runs' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { token, status: 'queued', expiresAt: '2026-08-14T10:00:00Z' } }), { status: 202 })
+      }
+      if (path === `/api/demo/analysis-runs/${token}`) {
+        return new Response(JSON.stringify({ data: {
+          status: 'completed', stage: 'completed', demo: true,
+          themes: [{ id: 'theme-1', name: 'Clear updates', summary: 'Customers need timely updates.', type: 'pain', confidence: 'high', evidence: [
+            { reviewId: 'review-1', quote: 'The first update arrived late.', originalText: 'The first update arrived late.', sourceCreatedAt: '2026-08-03T00:00:00Z' },
+            { reviewId: 'review-2', quote: 'The second update was clear.', originalText: 'The second update was clear.', sourceCreatedAt: '2026-08-10T00:00:00Z' },
+          ] }],
+          coverage: [
+            { reviewId: 'review-1', originalText: 'The first update arrived late.', source: { provider: 'csv_upload', entity: null, rating: 2, ratingScale: 5, language: 'en', sourceCreatedAt: '2026-08-03T00:00:00Z', sourceUrl: null }, disposition: 'recurring', reason: 'Grounded signal.', themeIds: ['theme-1'], signals: [] },
+            { reviewId: 'review-2', originalText: 'The second update was clear.', source: { provider: 'csv_upload', entity: null, rating: 4, ratingScale: 5, language: 'en', sourceCreatedAt: '2026-08-10T00:00:00Z', sourceUrl: null }, disposition: 'recurring', reason: 'Grounded signal.', themeIds: ['theme-1'], signals: [] },
+          ],
+        } }), { status: 200 })
+      }
+      if (path === `/api/demo/analysis-runs/${token}/overview`) {
+        return new Response(JSON.stringify({ data: { status: 'evidence_only', schemaVersion: 'overview-intelligence-v1', brief: null } }), { status: 200 })
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+
+    render(<PublicDemo onBack={vi.fn()} onLogin={vi.fn()} />)
+    await submitDemoCsv()
+    await screen.findByRole('button', { name: 'Overview' })
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
+    const requestsBeforeFilter = vi.mocked(fetch).mock.calls.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter review period Aug 2026 – Aug 2026' }))
+    fireEvent.input(screen.getByLabelText('From'), { target: { value: '2026-08-03' } })
+    fireEvent.input(screen.getByLabelText('To'), { target: { value: '2026-08-03' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply range' }))
+
+    expect(await screen.findByRole('img', { name: 'Uploaded CSV: 1 feedback, 100%' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Aug 10, 2026 — Clear updates/ })).not.toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(requestsBeforeFilter)
+  })
+
   it('renders the server cooldown as a live countdown and offers a fresh demo at zero', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-13T12:00:00Z'))
@@ -159,8 +226,8 @@ describe('PublicLanding', () => {
     expect(screen.getByRole('heading', { name: 'Analyze up to 50 feedback records.' })).toBeInTheDocument()
     expect(screen.getByRole('banner')).toHaveTextContent('50 records max')
     expect(screen.getByRole('region', { name: 'Upload and analysis flow' })).toHaveTextContent('Upload & mapAnalyzeReady')
-    expect(screen.getByText(/Additional CSVs stay inside this temporary workspace/i)).toBeInTheDocument()
-    expect(screen.getByText(/never carry into another project/i)).toBeInTheDocument()
+    expect(screen.getByText(/CSV can contain more rows/i)).toHaveTextContent(/first 50 eligible unique records/i)
+    expect(screen.getByText(/CSV can contain more rows/i)).toHaveTextContent(/additional CSVs append/i)
   })
 
   it('adds a second CSV to the same bounded Demo workspace and shows the exhaustion cooldown', async () => {
@@ -176,7 +243,7 @@ describe('PublicLanding', () => {
       if (path === '/api/demo/analysis-runs' && init?.method === 'POST') return new Response(JSON.stringify({ data: { token, status: 'queued', expiresAt: '2026-08-14T10:00:00Z', quota: { remaining: 40, resetAt: null } } }), { status: 202 })
       if (path === `/api/demo/analysis-runs/${token}/imports` && init?.method === 'POST') {
         appended = true
-        return new Response(JSON.stringify({ data: { token, status: 'queued', addedRecords: 40, expiresAt: '2026-08-14T10:00:00Z', quota: { remaining: 0, resetAt: '2026-08-14T17:00:00Z' } } }), { status: 202 })
+        return new Response(JSON.stringify({ data: { token, status: 'queued', addedRecords: 40, notImportedRecords: 1, expiresAt: '2026-08-14T10:00:00Z', quota: { remaining: 0, resetAt: '2026-08-14T17:00:00Z' } } }), { status: 202 })
       }
       if (path === `/api/demo/analysis-runs/${token}/overview`) return new Response(JSON.stringify({ data: { status: 'evidence_only', schemaVersion: 'overview-intelligence-v1', brief: null } }), { status: 200 })
       if (path === `/api/demo/analysis-runs/${token}`) {
@@ -195,13 +262,14 @@ describe('PublicLanding', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analysis' }))
     expect(screen.getByRole('heading', { name: /add up to 40 more feedback records/i })).toBeInTheDocument()
     expect(screen.getByText(/40 comments remain/i)).toBeInTheDocument()
-    await submitDemoCsv(csv(11, 40), 'follow-up.csv')
+    await submitDemoCsv(csv(11, 41), 'follow-up.csv')
 
     await waitFor(() => expect(screen.getByRole('complementary', { name: 'Project navigation' })).toHaveTextContent('50'))
+    expect(screen.getByText('40 records imported. 1 record was not imported because the Demo allowance was reached.')).toBeInTheDocument()
     expect(fetch).toHaveBeenCalledWith(`/api/demo/analysis-runs/${token}/imports`, expect.objectContaining({ method: 'POST' }))
     fireEvent.click(screen.getByRole('button', { name: 'Analysis' }))
     expect(screen.getByRole('heading', { name: 'Demo upload allowance used.' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(/Demo upload limit reached/i)
+    expect(screen.getByText('Demo upload limit reached.').closest('[role="status"]')).toHaveTextContent(/Demo upload limit reached/i)
     expect(screen.getByRole('timer')).toHaveTextContent(/Available again in \d{2}:\d{2}:\d{2}/i)
     expect(screen.queryByLabelText('CSV file')).not.toBeInTheDocument()
   })
@@ -235,7 +303,13 @@ describe('PublicLanding', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: {
         status: 'completed', demo: true, engine: 'llm-interpreted-theme-engine-v1', expiresAt: '2026-08-11T10:00:00.000Z',
         pdfUrl: `/api/demo/analysis-runs/${'a'.repeat(43)}/pdf`,
-        themes: [{ id: 'theme-1', name: 'Visible progress', summary: 'Customers need progress updates.', type: 'pain', confidence: 'high', evidence: [{ reviewId: 'review-1', quote: 'I had to ask three times what happened next.', entity: 'Sample Berlin', rating: 2 }] }], coverage: [{ reviewId: 'review-1', originalText: 'I had to ask three times what happened next.', disposition: 'recurring', reason: 'Validated recurring signal.', themeIds: ['theme-1'] }],
+        themes: [{ id: 'theme-1', name: 'Visible progress', summary: 'Customers need progress updates.', type: 'pain', confidence: 'high', evidence: [
+          { reviewId: 'review-1', quote: 'I had to ask three times what happened next.', entity: 'Sample Berlin', rating: 2, sourceCreatedAt: '2026-08-01T00:00:00.000Z' },
+          { reviewId: 'review-2', quote: 'The next update arrived a day later.', entity: 'Sample Berlin', rating: 3, sourceCreatedAt: '2026-08-02T00:00:00.000Z' },
+        ] }], coverage: [
+          { reviewId: 'review-1', originalText: 'I had to ask three times what happened next.', disposition: 'recurring', reason: 'Validated recurring signal.', themeIds: ['theme-1'] },
+          { reviewId: 'review-2', originalText: 'The next update arrived a day later.', disposition: 'recurring', reason: 'Validated recurring signal.', themeIds: ['theme-1'] },
+        ],
       } }), { status: 200, headers: { 'content-type': 'application/json' } }))
 
     render(<PublicDemo onBack={vi.fn()} onLogin={vi.fn()} />)
@@ -246,6 +320,7 @@ describe('PublicLanding', () => {
     await submitDemoCsv()
 
     await waitFor(() => expect(screen.getAllByRole('heading', { name: 'Visible progress' }).length).toBeGreaterThan(0))
+    expect(screen.getByRole('img', { name: 'Dated feedback volume' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Voice Map' }))
     expect(screen.getByText(/I had to ask three times what happened next/, { selector: 'blockquote' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Download demo PDF' })).toHaveAttribute('href', `/api/demo/analysis-runs/${'a'.repeat(43)}/pdf`)
@@ -297,7 +372,7 @@ describe('PublicLanding', () => {
     await submitDemoCsv()
     await waitFor(() => expect(screen.getByText('Upload & map')).toHaveAttribute('aria-current', 'step'))
     await waitFor(() => expect(screen.getByText('Analyze')).toHaveAttribute('aria-current', 'step'), { timeout: 2500 })
-    expect(await screen.findByRole('heading', { name: 'Evidence context' }, { timeout: 2500 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Overview' }, { timeout: 2500 })).toBeInTheDocument()
     expect(screen.queryByRole('tablist', { name: 'Voice Map mode' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Overview' })).toHaveClass('active')
     expect(screen.queryByRole('region', { name: 'Feedback coverage' })).not.toBeInTheDocument()

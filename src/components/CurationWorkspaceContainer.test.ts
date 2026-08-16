@@ -31,6 +31,17 @@ describe('adaptThemes', () => {
     expect(adaptThemes(projection, artifact)[0]?.reviewCount).toBe(1)
   })
 
+  it('projects Curation counts and evidence to the active review-date window', () => {
+    const evidence = [
+      { signalId: 'signal-in', reviewId: 'review-in', quote: 'in range', quoteStart: 0, quoteEnd: 8, originalText: 'in range', entity: null, provider: 'CSV', rating: 4, sourceCreatedAt: '2026-03-02', confidence: .8, pinned: false, excluded: false },
+      { signalId: 'signal-out', reviewId: 'review-out', quote: 'out of range', quoteStart: 0, quoteEnd: 12, originalText: 'out of range', entity: null, provider: 'CSV', rating: 2, sourceCreatedAt: '2026-04-02', confidence: .8, pinned: false, excluded: false },
+    ]
+    const theme = { id: 'theme-1', machineThemeId: 'theme-1', originThemeIds: ['theme-1'], rank: 1, name: 'Filtered bucket', summary: '2 feedback items form a category-first recurring candidate.', type: 'pain', categories: ['pain'], sentiment: 'negative', confidence: 'moderate', validationStatus: 'valid', status: 'pending', groupingSuggestion: null, publishable: false, origin: 'model_confirmed', provenance: { createdBy: null, createdAt: null, sourceReviewIds: ['review-in', 'review-out'] }, evidence }
+    const projection = { machineThemes: [theme], effectiveThemes: [theme], actions: [], readiness: { validatedMachineThemes: 1, resolved: 0, pending: 1, approved: 0, rejected: 0, consumed: 0, publishable: 0, canMarkReady: false, isReady: false } } as unknown as CurationProjection
+
+    expect(adaptThemes(projection, null, new Set(['review-in']))[0]).toMatchObject({ reviewCount: 1, machine: { summary: 'This comment has its own topic; more feedback may confirm recurrence.' }, evidence: [{ reviewId: 'review-in' }] })
+  })
+
   it('does not leak a superseded historical edit into the restored effective revision', () => {
     const theme: CurationProjection['machineThemes'][number] = {
       id: 'theme-1', machineThemeId: 'theme-1', originThemeIds: ['theme-1'], rank: 1,

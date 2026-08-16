@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   VoiceMapWorkspace,
   type SynthesizedVoiceMap,
@@ -11,12 +11,14 @@ import {
 } from './VoiceMapWorkspace'
 import { getAnalysisCoverage, getCurationProjection, getOverviewBrief, getVoiceMapArtifact, listAnalysisRuns, type AnalysisCoverageItem, type CurationProjection, type OverviewBriefResult, type VoiceMapArtifactResponse } from '../lib/api'
 import { CoverageSummary, customerCoverageReason } from './CoverageSummary'
+import { projectDateRange } from '../lib/dateProjection'
 
 type Props = {
   projectId: string | null
   section?: 'overview' | 'voice-map'
   initialMode?: Exclude<VoiceMapMode, 'overview'>
   refreshKey?: number
+  dateRange?: { from: string | null; to: string | null }
   onOpenReview: (reviewId: string) => void
   onOpenCuration: () => void
   onOpenVoiceMap?: (mode: Exclude<VoiceMapMode, 'overview'>) => void
@@ -45,9 +47,12 @@ function insight(source: { title: string; narrative: string; supportingThemeIds:
     : emptyVoiceMapInsight(type)
 }
 
-function topBucketBubbles(themes: VoiceMapTheme[]): SynthesizedVoiceMap['phrases'] {
+export function topBucketBubbles(themes: VoiceMapTheme[], recurringThemeIds?: Set<string>, curatedIds?: Set<string>): SynthesizedVoiceMap['phrases'] {
   return themes.filter((theme) => theme.metrics.reviewCount > 0)
-    .map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type }))
+    .map((theme) => ({
+      text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type,
+      state: curatedIds?.has(theme.id) ? 'curated' as const : recurringThemeIds?.has(theme.id) ? 'confirmed' as const : recurringThemeIds ? 'emerging' as const : undefined,
+    }))
 }
 
 export function publicSignalType(value: string | null | undefined): VoiceMapSignalType {
@@ -74,18 +79,22 @@ export function emergingThemesFromCoverage(items: AnalysisCoverageItem[]): Voice
     const quoteStart = item.originalText.indexOf(signal.quote)
     const id = `emerging:${item.reviewId}`
     const signalType = publicSignalType(signal.category)
+    const source = item.source
     return [{
       id, rank: index + 1, name: signal.label, topic: signal.topic || signal.label, type: signalType, signalTypes: [signalType],
       sentiment: publicSentiment(signal.sentiment),
       summary: customerCoverageReason(item), confidence: 'emerging' as const, representativeQuote: signal.quote,
       metrics: { reviewCount: 1, signalCount: 1, prevalence: items.length ? 1 / items.length : 0, averageRating: null, trend: null, contradictionRate: 0, rootCauseRatio: 0 },
       topPhrases: [], entityBreakdown: [], languageBreakdown: [],
-      evidence: [{ id: `${id}:evidence`, reviewId: item.reviewId, quote: signal.quote, quoteStart, quoteEnd: quoteStart < 0 ? -1 : quoteStart + signal.quote.length, originalText: item.originalText, rating: null, provider: 'Voice Map intelligence', entity: null, language: null, sourceCreatedAt: null, sourceUrl: null, strength: signal.confidence }],
+      evidence: [{ id: `${id}:evidence`, reviewId: item.reviewId, quote: signal.quote, quoteStart, quoteEnd: quoteStart < 0 ? -1 : quoteStart + signal.quote.length, originalText: item.originalText,
+        rating: source?.rating ?? null, ratingScale: source?.ratingScale ?? null, provider: source?.provider || 'Uploaded feedback',
+        entity: source?.entity ?? null, language: source?.language ?? null, sourceCreatedAt: source?.sourceCreatedAt ?? null,
+        sourceUrl: source?.sourceUrl ?? null, strength: signal.confidence }],
     }]
   })
 }
 
-export function categorizeVisibleSignals(signals: SynthesizedVoiceMap['signals'], themes: VoiceMapTheme[]): SynthesizedVoiceMap['signals'] {
+export function categorizeVisibleSignals(signals: SynthesizedVoiceMap['signals'], themes: VoiceMapTheme[], preserveMissing = true): SynthesizedVoiceMap['signals'] {
   const definitions: Array<[keyof SynthesizedVoiceMap['signals'], string[]]> = [
     ['primaryPain', ['pain']],
     ['desiredOutcome', ['desired_outcome']],
@@ -99,12 +108,8 @@ export function categorizeVisibleSignals(signals: SynthesizedVoiceMap['signals']
       ...signals[key], title: theme.name,
       narrative: theme.summary,
       confidence: theme.confidence, reviewCount: theme.metrics.reviewCount, supportingThemeIds: [theme.id],
-    } : signals[key].reviewCount > 0 ? signals[key] : emptyVoiceMapInsight(signals[key].type)]
+    } : preserveMissing && signals[key].reviewCount > 0 ? signals[key] : emptyVoiceMapInsight(signals[key].type)]
   })) as SynthesizedVoiceMap['signals']
-}
-
-function emergingBubbles(themes: VoiceMapTheme[]): SynthesizedVoiceMap['phrases'] {
-  return themes.map((theme) => ({ text: theme.name, count: 1, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'emerging' }))
 }
 
 function evidenceOverlap(left: VoiceMapTheme, right: VoiceMapTheme) {
@@ -205,7 +210,7 @@ export function adaptArtifact(data: VoiceMapArtifactResponse) {
       quoteStart: typeof item.quoteStart === 'number' && Number.isInteger(item.quoteStart) ? item.quoteStart : 0,
       quoteEnd: typeof item.quoteEnd === 'number' && Number.isInteger(item.quoteEnd) ? item.quoteEnd : item.quote.length,
       originalText: item.originalText || item.quote,
-      rating: item.rating, provider: item.provider || 'unknown_source', entity: item.entity,
+      rating: item.rating, ratingScale: item.ratingScale, provider: item.provider || 'unknown_source', entity: item.entity,
       language: item.language, sourceCreatedAt: item.sourceCreatedAt, sourceUrl: item.sourceUrl || null, strength: item.strength,
     })),
     }
@@ -292,7 +297,7 @@ export function applyCuratedProjection(themes: VoiceMapTheme[], projection: Cura
     const base = source.get(theme.machineThemeId || theme.originThemeIds[0])
     const evidenceById = new Map(base?.evidence.map((item) => [item.id, item]) || [])
     const evidence = theme.evidence.filter((item) => !item.excluded).map((item) => ({
-      ...(evidenceById.get(item.signalId) || { id: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd, originalText: item.originalText, rating: item.rating, provider: item.provider, entity: item.entity, language: null, sourceCreatedAt: item.sourceCreatedAt, sourceUrl: null, strength: item.confidence }),
+      ...(evidenceById.get(item.signalId) || { id: item.signalId, reviewId: item.reviewId, quote: item.quote, quoteStart: item.quoteStart, quoteEnd: item.quoteEnd, originalText: item.originalText, rating: item.rating, ratingScale: item.ratingScale, provider: item.provider, entity: item.entity, language: null, sourceCreatedAt: item.sourceCreatedAt, sourceUrl: null, strength: item.confidence }),
       id: item.signalId, reviewId: item.reviewId, quote: item.quote,
     }))
     const signalType = publicSignalType(theme.primarySignalType || theme.categories?.[0] || theme.type)
@@ -344,13 +349,15 @@ function applyCuratedVoiceMap(voiceMap: SynthesizedVoiceMap, projection: Curatio
   }
 }
 
-export function VoiceMapWorkspaceContainer({ projectId, section = 'voice-map', initialMode = 'read', refreshKey = 0, onOpenReview, onOpenCuration, onOpenVoiceMap, onRunSummary }: Props) {
+export function VoiceMapWorkspaceContainer({ projectId, section = 'voice-map', initialMode = 'read', refreshKey = 0, dateRange = { from: null, to: null }, onOpenReview, onOpenCuration, onOpenVoiceMap, onRunSummary }: Props) {
   const [mode, setMode] = useState<VoiceMapMode>(initialMode)
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const [run, setRun] = useState<VoiceMapArtifactResponse['run'] | null>(null)
-  const [voiceMap, setVoiceMap] = useState<SynthesizedVoiceMap | null>(null)
-  const [themes, setThemes] = useState<VoiceMapTheme[]>([])
-  const [coverage, setCoverage] = useState<AnalysisCoverageItem[]>([])
+  const [sourceVoiceMap, setSourceVoiceMap] = useState<SynthesizedVoiceMap | null>(null)
+  const [sourceThemeSets, setSourceThemeSets] = useState<{ projected: VoiceMapTheme[]; confirmed: VoiceMapTheme[]; emerging: VoiceMapTheme[] }>({ projected: [], confirmed: [], emerging: [] })
+  const [sourceCoverage, setSourceCoverage] = useState<AnalysisCoverageItem[]>([])
+  const [recurringIds, setRecurringIds] = useState<string[]>([])
+  const [curatedThemeIds, setCuratedThemeIds] = useState<string[]>([])
   const [overviewBrief, setOverviewBrief] = useState<OverviewBriefResult | null>(null)
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -378,32 +385,58 @@ export function VoiceMapWorkspaceContainer({ projectId, section = 'voice-map', i
         .filter((theme) => recurringThemeIds.has(theme.id) || curatedIds.has(theme.id))
       const emergingThemes = emergingThemesFromCoverage(runCoverage || [])
       const curatedVoiceMap = applyCuratedVoiceMap(adapted.voiceMap, curation)
-      const visibleThemes = section === 'overview' ? projectedThemes : [...confirmedThemes, ...emergingThemes]
-      const categorizedSignals = categorizeVisibleSignals(curatedVoiceMap.signals, visibleThemes.filter((theme) => !curatedIds.has(theme.id)))
-      const hasConfirmedSignal = Object.values(curatedVoiceMap.signals).some((signal) => signal.reviewCount > 0)
-      const categorizedReviews = new Set(visibleThemes.flatMap((theme) => theme.evidence.map((item) => item.reviewId))).size
-      setRun(artifact.run); setVoiceMap({ ...curatedVoiceMap,
-        conclusion: !hasConfirmedSignal && categorizedReviews > 0 ? { title: 'Actionable signals are emerging from retained feedback.', narrative: `${categorizedReviews} comments have grounded category homes below. Recurrence and executive conclusions remain unconfirmed.` } : curatedVoiceMap.conclusion,
-        signals: categorizedSignals,
-        phrases: [...curatedVoiceMap.phrases.filter((phrase) => !curatedIds.has(phrase.themeId)), ...confirmedThemes.filter((theme) => curatedIds.has(theme.id)).map((theme) => ({ text: theme.name, count: theme.metrics.reviewCount, themeId: theme.id, themeName: theme.name, category: theme.type, state: 'curated' as const })), ...emergingBubbles(emergingThemes)],
-      }); setThemes(visibleThemes); setCoverage(runCoverage || [])
+      setRun(artifact.run); setSourceVoiceMap(curatedVoiceMap); setSourceThemeSets({ projected: projectedThemes, confirmed: confirmedThemes, emerging: emergingThemes }); setSourceCoverage(runCoverage || [])
+      setRecurringIds([...recurringThemeIds]); setCuratedThemeIds([...curatedIds])
       onRunSummaryRef.current?.({ confidence: confidence(artifact.run.qualityReport?.confidence || 'Insufficient'), createdAt: artifact.run.createdAt, dateFrom: artifact.run.configuration.dateFrom, dateTo: artifact.run.configuration.dateTo }); setStatus('ready')
-      if (section === 'overview') void getOverviewBrief(latest.id).then((brief) => {
-        if (version === loadVersion.current) setOverviewBrief(brief)
-      }).catch(() => undefined)
     } catch (reason) {
       if (version !== loadVersion.current) return
       setError(reason instanceof Error ? reason.message : 'Voice Map unavailable.'); setStatus('error')
     }
-  }, [projectId, refreshKey, section])
+  }, [projectId, refreshKey])
 
   useEffect(() => { void load(); return () => { loadVersion.current += 1 } }, [load])
   useEffect(() => { if (section === 'voice-map') setMode(initialMode) }, [initialMode, section])
+  useEffect(() => {
+    if (section !== 'overview' || !run || dateRange.from || dateRange.to || overviewBrief) return
+    const version = loadVersion.current
+    void getOverviewBrief(run.id).then((brief) => {
+      if (version === loadVersion.current) setOverviewBrief(brief)
+    }).catch(() => undefined)
+  }, [dateRange.from, dateRange.to, overviewBrief, run, section])
+
+  const sourceThemes = section === 'overview' ? sourceThemeSets.projected : [...sourceThemeSets.confirmed, ...sourceThemeSets.emerging]
+  const projection = useMemo(() => projectDateRange(sourceThemes, sourceCoverage, dateRange), [dateRange.from, dateRange.to, sourceCoverage, sourceThemes])
+  const themes = projection.themes
+  const coverage = projection.coverage
+  const recurringThemeIds = useMemo(() => new Set(recurringIds), [recurringIds])
+  const curatedIds = useMemo(() => new Set(curatedThemeIds), [curatedThemeIds])
+  const voiceMap = useMemo(() => {
+    if (!sourceVoiceMap) return null
+    const filtered = Boolean(dateRange.from || dateRange.to)
+    const categorizedSignals = categorizeVisibleSignals(sourceVoiceMap.signals, themes.filter((theme) => !curatedIds.has(theme.id)), !filtered)
+    const categorizedReviews = new Set(themes.flatMap((theme) => theme.evidence.map((item) => item.reviewId))).size
+    const visibleThemeIds = new Set(themes.map((theme) => theme.id))
+    return {
+      ...sourceVoiceMap,
+      conclusion: filtered
+        ? { title: 'Filtered evidence view', narrative: `${categorizedReviews} comments fall within this review period.` }
+        : sourceVoiceMap.conclusion,
+      signals: categorizedSignals,
+      phrases: topBucketBubbles(themes, recurringThemeIds, curatedIds),
+      recommendedMoves: sourceVoiceMap.recommendedMoves.flatMap((move) => {
+        const supportingThemeIds = move.supportingThemeIds.filter((id) => visibleThemeIds.has(id))
+        return supportingThemeIds.length ? [{ ...move, supportingThemeIds }] : []
+      }),
+    }
+  }, [curatedIds, dateRange.from, dateRange.to, recurringThemeIds, sourceVoiceMap, themes])
+  const displayedBrief: OverviewBriefResult | null = dateRange.from || dateRange.to
+    ? { status: 'evidence_only', schemaVersion: 'overview-intelligence-v1', brief: null, message: 'Clear the date filter to view the full saved intelligence brief.' }
+    : overviewBrief
 
   return <><VoiceMapWorkspace
     section={section} mode={section === 'overview' ? 'overview' : mode} status={status}
-    run={run ? { id: run.id, createdAt: run.createdAt, reviewCount: Number(run.counts?.included || 0), themeCount: themes.length, confidence: confidence(run.qualityReport?.confidence || 'Insufficient'), pipelineVersion: run.pipelineVersion } : null}
-    voiceMap={voiceMap} themes={themes} overviewBrief={overviewBrief} selectedThemeId={selectedThemeId} error={error}
+    run={run ? { id: run.id, createdAt: run.createdAt, reviewCount: dateRange.from || dateRange.to ? coverage.length : Number(run.counts?.included || 0), themeCount: themes.length, confidence: confidence(run.qualityReport?.confidence || 'Insufficient'), pipelineVersion: run.pipelineVersion } : null}
+    voiceMap={voiceMap} themes={themes} overviewBrief={displayedBrief} selectedThemeId={selectedThemeId} error={error}
     onModeChange={setMode} onThemeSelect={setSelectedThemeId} onThemeClose={() => setSelectedThemeId(null)} onOpenReview={onOpenReview} onOpenCuration={onOpenCuration} onOpenVoiceMap={onOpenVoiceMap}
   />{section === 'voice-map' && status === 'ready' ? <CoverageSummary items={coverage} onThemeSelect={setSelectedThemeId} /> : null}</>
 }

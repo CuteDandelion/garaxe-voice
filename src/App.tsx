@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { Icon } from './components/Icon'
 import { ProjectDialog } from './components/ProjectDialog'
@@ -15,7 +15,7 @@ import { Sidebar } from './components/Sidebar'
 import { SourcesWorkspace } from './components/SourcesWorkspace'
 import { Topbar } from './components/Topbar'
 import { WaitlistAdminWorkspace } from './components/WaitlistAdminWorkspace'
-import { createAnalysisRun, createProject, getCurrentAuth, getFilteredReviewSummary, getReviewDetail, listProjects, listReviews, logout, waitForAnalysisRun, type AuthContext, type Project, type ReviewInventoryQuery, type ReviewRecord } from './lib/api'
+import { createProject, getCurrentAuth, getFilteredReviewSummary, getReviewDetail, listProjects, listReviews, logout, type AuthContext, type Project, type ReviewInventoryQuery, type ReviewRecord } from './lib/api'
 import { localPerformanceDiagnosticsEnabled } from './localPerformanceDiagnostics'
 
 const localPerformanceDiagnostics = localPerformanceDiagnosticsEnabled(import.meta.env, window.location.hostname)
@@ -60,10 +60,6 @@ function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome
   const [projectReviewSummary, setProjectReviewSummary] = useState({ total: 0, providers: 0 })
   const [reviewDateRange, setReviewDateRange] = useState<{ from: string | null; to: string | null }>({ from: null, to: null })
   const [analysisDateRange, setAnalysisDateRange] = useState<{ from: string | null; to: string | null }>({ from: null, to: null })
-  const [dateFilterProjectId, setDateFilterProjectId] = useState<string | null>(null)
-  const projectIdRef = useRef(projectId)
-  projectIdRef.current = projectId
-  const [analysisRefreshKey, setAnalysisRefreshKey] = useState(0)
   const [voiceMapMode, setVoiceMapMode] = useState<'read' | 'investigate'>('read')
   const [analysisSummary, setAnalysisSummary] = useState<{ confidence: string | null; createdAt: string | null }>({ confidence: null, createdAt: null })
   const [reviewOptions, setReviewOptions] = useState({ providers: [] as { value: string; label: string; count: number }[], entities: [] as { value: string; label: string; count: number }[], languages: [] as { value: string; label: string; count: number }[] })
@@ -117,27 +113,12 @@ function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome
 
   const applyDateRange = useCallback(async ({ from, to }: { from: string; to: string }) => {
     if (!projectId) throw new Error('Select a project before filtering dates.')
-    const requestedProjectId = projectId
-    setDateFilterProjectId(requestedProjectId)
-    try {
-      const created = await createAnalysisRun(requestedProjectId, {
-        objective: 'full_voice_map', dateFrom: from || undefined, dateTo: to || undefined,
-        entities: [], ratings: [], languages: [], writtenOnly: true, minTextLength: 3,
-      })
-      const completed = await waitForAnalysisRun(created.id, 500)
-      if (completed.status !== 'completed') throw new Error(completed.errorMessage || 'The filtered analysis failed.')
-      if (projectIdRef.current !== requestedProjectId) return
-      setAnalysisDateRange({ from: from || reviewDateRange.from, to: to || reviewDateRange.to })
-      setActivePage('Overview')
-      setAnalysisRefreshKey((value) => value + 1)
-    } finally {
-      setDateFilterProjectId((current) => current === requestedProjectId ? null : current)
-    }
-  }, [projectId, reviewDateRange.from, reviewDateRange.to])
+    setAnalysisDateRange({ from: from || null, to: to || null })
+    setActivePage('Overview')
+  }, [projectId])
 
   const handleRunSummary = useCallback((summary: { confidence: string | null; createdAt: string | null; dateFrom?: string; dateTo?: string }) => {
     setAnalysisSummary({ confidence: summary.confidence, createdAt: summary.createdAt })
-    setAnalysisDateRange({ from: summary.dateFrom || null, to: summary.dateTo || null })
   }, [])
 
   const account = auth ? {
@@ -268,7 +249,7 @@ function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome
       />
       {menuOpen ? <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
       <div className="app-frame">
-        <Topbar projects={projects} projectId={projectId} title={activeLabel} dateRange={{ from: analysisDateRange.from || reviewDateRange.from, to: analysisDateRange.to || reviewDateRange.to }} availableDateRange={reviewDateRange} userInitials={userInitials} account={account} dateFilterBusy={dateFilterProjectId === projectId} onProjectChange={selectProject} onDateRangeChange={applyDateRange} onLogout={() => void signOut()} onMenu={() => setMenuOpen(true)} onExport={() => setActivePage('Reports')} onHome={onHome} />
+        <Topbar projects={projects} projectId={projectId} title={activeLabel} dateRange={{ from: analysisDateRange.from || reviewDateRange.from, to: analysisDateRange.to || reviewDateRange.to }} availableDateRange={reviewDateRange} userInitials={userInitials} account={account} dateFilterBusy={false} onProjectChange={selectProject} onDateRangeChange={applyDateRange} onLogout={() => void signOut()} onMenu={() => setMenuOpen(true)} onExport={() => setActivePage('Reports')} onHome={onHome} />
         <main>
           {activePage === 'Sources' ? (
             <SourcesWorkspace projectId={projectId} onImported={(count) => { setImportedCount(count); setActivePage('Reviews') }} />
@@ -295,7 +276,7 @@ function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome
           ) : activePage === 'Analysis' ? (
             <AnalysisWorkspaceContainer projectId={projectId} onOpenReview={() => setActivePage('Reviews')} onOpenOverview={() => setActivePage('Overview')} />
           ) : activePage === 'Curation' ? (
-            <CurationWorkspaceContainer projectId={projectId} />
+            <CurationWorkspaceContainer projectId={projectId} dateRange={analysisDateRange} />
           ) : activePage === 'Reports' ? (
             <ReportsWorkspaceContainer projectId={projectId} />
           ) : activePage === 'Waitlist' ? (
@@ -311,7 +292,7 @@ function WorkspaceApp({ onSignedOut, onHome }: { onSignedOut: () => void; onHome
           ) : activePage === 'CopyLab' ? (
             <CopyLabWorkspaceContainer projectId={projectId} onOpenReview={openReviewById} />
           ) : activePage === 'Overview' || activePage === 'VoiceMap' ? (
-            <VoiceMapWorkspaceContainer projectId={projectId} section={activePage === 'Overview' ? 'overview' : 'voice-map'} initialMode={voiceMapMode} refreshKey={analysisRefreshKey} onOpenReview={openReviewById} onOpenCuration={() => setActivePage('Curation')} onOpenVoiceMap={(mode) => { setVoiceMapMode(mode); setActivePage('VoiceMap') }} onRunSummary={handleRunSummary} />
+            <VoiceMapWorkspaceContainer projectId={projectId} section={activePage === 'Overview' ? 'overview' : 'voice-map'} initialMode={voiceMapMode} dateRange={analysisDateRange} onOpenReview={openReviewById} onOpenCuration={() => setActivePage('Curation')} onOpenVoiceMap={(mode) => { setVoiceMapMode(mode); setActivePage('VoiceMap') }} onRunSummary={handleRunSummary} />
           ) : null}
         </main>
       </div>

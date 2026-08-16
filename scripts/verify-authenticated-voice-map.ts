@@ -1,5 +1,7 @@
 import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
+import { createClient } from '@supabase/supabase-js'
 import { detectMapping, parseCsv } from '../src/lib/csv'
 import { balancedCategoryDemoRunIds, controlledFixture, validateBalancedCategoryCoverage, validateControlledCoverage } from './voice-map-controlled-oracle'
 import { assertHeldOutQuality, evaluateHeldOutCoverage, heldOutFixture } from './voice-map-held-out-oracle'
@@ -10,8 +12,19 @@ import { evaluateIndependentHoldout } from './voice-map-independent-10-rubric'
 import { incrementalFeedbackBatches } from './voice-map-incremental-20-input'
 import { capturePairExchange, replayObservedPairErrors, type CapturedPairBatch } from './voice-map-pair-repeatability'
 
-process.env.GARAXE_DB_DIR = 'memory://'
-process.env.GARAXE_ADMIN_BOOTSTRAP_ENABLED = 'true'
+const localSupabase = process.env.VOICE_MAP_LOCAL_SUPABASE === '1'
+if (localSupabase) {
+  if (!/^http:\/\/(127\.0\.0\.1|localhost):/.test(process.env.SUPABASE_URL || '')
+    || !/^postgresql:\/\/[^@]+@(127\.0\.0\.1|localhost):/.test(process.env.DATABASE_URL || '')) {
+    throw new Error('Authenticated local E2E only accepts loopback Supabase and Postgres services.')
+  }
+} else {
+  process.env.GARAXE_DB_DIR = 'memory://'
+  process.env.GARAXE_ADMIN_BOOTSTRAP_ENABLED = 'true'
+  delete process.env.SUPABASE_URL
+  delete process.env.SUPABASE_PUBLISHABLE_KEY
+  delete process.env.DATABASE_URL
+}
 const pairRepeatability = process.env.VOICE_MAP_PAIR_REPEATABILITY === '1'
 const inheritedFetch = globalThis.fetch.bind(globalThis)
 const pairCaptures: CapturedPairBatch[] = []
@@ -40,14 +53,35 @@ await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 const address = server.address()
 if (!address || typeof address === 'string') throw new Error('Authenticated E2E API did not start.')
 const baseUrl = `http://127.0.0.1:${address.port}`
-const bootstrap = await fetch(`${baseUrl}/api/auth/bootstrap`, {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
-    email: 'local-e2e@example.invalid', displayName: 'Voice Map E2E', organizationName: 'Disposable Voice Map E2E',
-  }),
-})
-const bootstrapPayload = await bootstrap.json()
-if (!bootstrap.ok) throw new Error(`Admin-only fixture provisioning failed with HTTP ${bootstrap.status}.`)
-const authToken = bootstrapPayload.data.token as string
+let localAuthUserId: string | null = null
+let localOrganizationId: string | null = null
+let localIsolationUserId: string | null = null
+let localIsolationOrganizationId: string | null = null
+let localClient: ReturnType<typeof createClient> | null = null
+let authToken: string
+if (localSupabase) {
+  localClient = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, { auth: { persistSession: false } })
+  const signup = await localClient.auth.signUp({
+    email: `voice-map-incremental-${Date.now()}@example.test`,
+    password: `Local-${randomBytes(18).toString('base64url')}!`,
+  })
+  if (signup.error || !signup.data.session?.access_token || !signup.data.user) throw signup.error || new Error('Local Supabase signup returned no session.')
+  authToken = signup.data.session.access_token
+  localAuthUserId = signup.data.user.id
+  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { authorization: `Bearer ${authToken}` } })
+  const mePayload = await me.json()
+  if (!me.ok) throw new Error(`Local Supabase provisioning failed with HTTP ${me.status}.`)
+  localOrganizationId = mePayload.data.memberships[0]?.organizationId || null
+} else {
+  const bootstrap = await fetch(`${baseUrl}/api/auth/bootstrap`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      email: 'local-e2e@example.invalid', displayName: 'Voice Map E2E', organizationName: 'Disposable Voice Map E2E',
+    }),
+  })
+  const bootstrapPayload = await bootstrap.json()
+  if (!bootstrap.ok) throw new Error(`Admin-only fixture provisioning failed with HTTP ${bootstrap.status}.`)
+  authToken = bootstrapPayload.data.token as string
+}
 const headers = { authorization: `Bearer ${authToken}`, 'content-type': 'application/json' }
 const database = await getDatabase()
 const worker = await createClusterInterpretationWorker(database)
@@ -130,9 +164,46 @@ async function api(path: string, init: RequestInit = {}) {
 
 const csvCell = (value: string) => `"${value.replaceAll('"', '""')}"`
 const incremental = process.env.VOICE_MAP_E2E_MATRIX === 'incremental'
+const incrementalReference = incremental && localSupabase
 let incrementalProject: any = null
 const incrementalRows: Array<readonly [string, string]> = []
 let firstIncremental: { runId: string; reportId: string; coverageTexts: string[]; reportSnapshot: string; curationName: string } | null = null
+const incrementalMetrics: Array<Record<string, unknown>> = []
+
+async function semanticSnapshot(runId: string) {
+  const result = await database.query<{
+    originalText: string; topic: string; category: string; quote: string; theme: string | null; themeType: string | null
+  }>(
+    `SELECT r.body_original AS "originalText",
+      COALESCE(rs.attributes->'canonicalOutcome'->>'topic', rs.attributes->'emergingInterpretation'->>'topic', rs.label) AS topic,
+      COALESCE(rs.attributes->'canonicalOutcome'->>'primaryCategory', rs.attributes->'emergingInterpretation'->>'primaryCategory', rs.signal_type) AS category,
+      rs.quote_text AS quote, t.name AS theme, t.theme_type AS "themeType"
+     FROM review_signals rs
+     JOIN reviews r ON r.id = rs.review_id
+     LEFT JOIN theme_evidence te ON te.signal_id = rs.id
+     LEFT JOIN themes t ON t.id = te.theme_id AND t.analysis_run_id = rs.analysis_run_id
+     WHERE rs.analysis_run_id = $1
+     ORDER BY r.body_original, topic, category, quote, t.name NULLS FIRST`,
+    [runId],
+  )
+  return result.rows
+}
+
+async function analysisMetrics(runId: string, startedAt: number, cpuStarted: NodeJS.CpuUsage, rssStarted: number) {
+  const jobs = await database.query<{ calls: number; retries: number; queueWaitMs: number; modelDurationMs: number }>(
+    `SELECT COUNT(*)::int AS calls, COALESCE(SUM(GREATEST(attempt_count - 1, 0)), 0)::int AS retries,
+      COALESCE(SUM(EXTRACT(EPOCH FROM (last_leased_at - created_at)) * 1000), 0)::float AS "queueWaitMs",
+      COALESCE(SUM(EXTRACT(EPOCH FROM (completed_at - last_leased_at)) * 1000)
+        FILTER (WHERE completed_at IS NOT NULL AND last_leased_at IS NOT NULL), 0)::float AS "modelDurationMs"
+     FROM llm_jobs WHERE analysis_run_id = $1`, [runId],
+  )
+  const cpu = process.cpuUsage(cpuStarted)
+  return {
+    runId, wallMs: Math.round(performance.now() - startedAt), cpuMs: Math.round((cpu.user + cpu.system) / 1000),
+    rssDeltaBytes: process.memoryUsage().rss - rssStarted,
+    ...(jobs.rows[0] || { calls: 0, retries: 0, queueWaitMs: 0, modelDurationMs: 0 }),
+  }
+}
 
 try {
   for (const [sampleIndex, sample] of selectedCases.entries()) {
@@ -154,6 +225,9 @@ try {
       if (job.status === 'failed') throw new Error(`${sample.name} import failed.`)
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
+    const runStartedAt = performance.now()
+    const runCpuStarted = process.cpuUsage()
+    const runRssStarted = process.memoryUsage().rss
     const run = (await api('/api/analysis-runs', { method: 'POST', body: JSON.stringify({
       projectId: project.id, configuration: { objective: 'full_voice_map', writtenOnly: true, minTextLength: 20 },
     }) })).payload.data
@@ -169,6 +243,7 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 1_000))
     }
     if (!completed || completed.qualityReport?.clusterInterpretation?.state !== 'completed') throw new Error(`${sample.name} did not complete full interpretation.`)
+    if (incrementalReference) incrementalMetrics.push(await analysisMetrics(run.id, runStartedAt, runCpuStarted, runRssStarted))
     const coverage = (await api(`/api/analysis-runs/${run.id}/coverage`)).payload.data as Array<any>
     if (coverage.length !== expectedRows.length || coverage.some((item) => !item.disposition || !item.reason)) throw new Error(`${sample.name} silently dropped feedback.`)
     const expectedTexts = expectedRows.map(([text]) => text.trim()).sort()
@@ -313,6 +388,48 @@ try {
       const oldPdf = await fetch(`${baseUrl}/api/reports/${firstIncremental.reportId}/pdf`, { headers: { authorization: `Bearer ${authToken}` } })
       const oldPdfBytes = Buffer.from(await oldPdf.arrayBuffer())
       if (!oldPdf.ok || !oldPdf.headers.get('cache-control')?.includes('no-store') || oldPdfBytes.subarray(0, 4).toString() !== '%PDF') throw new Error('The first immutable report no longer downloads as a valid no-store PDF.')
+      if (incrementalReference) {
+        const appendSnapshot = await semanticSnapshot(run.id)
+        const referenceStartedAt = performance.now()
+        const referenceCpuStarted = process.cpuUsage()
+        const referenceRssStarted = process.memoryUsage().rss
+        const reference = (await api('/api/analysis-runs', { method: 'POST', body: JSON.stringify({
+          projectId: project.id, configuration: { objective: 'full_voice_map', writtenOnly: true, minTextLength: 20 },
+        }) })).payload.data
+        let referenceCompleted = false
+        for (let attempt = 0; attempt < 300; attempt += 1) {
+          await worker.runOnce()
+          await settleClusterInterpretationRuns(database)
+          const current = (await api(`/api/analysis-runs/${reference.id}`)).payload.data
+          if (current.status === 'completed') { referenceCompleted = true; break }
+          if (current.status === 'failed') throw new Error(`Incremental full-reference run failed: ${current.errorMessage || 'unknown'}`)
+          await new Promise((resolve) => setTimeout(resolve, 1_000))
+        }
+        if (!referenceCompleted) throw new Error('Incremental full-reference run did not complete.')
+        const referenceMetrics = await analysisMetrics(reference.id, referenceStartedAt, referenceCpuStarted, referenceRssStarted)
+        const referenceSnapshot = await semanticSnapshot(reference.id)
+        if (JSON.stringify(referenceSnapshot) !== JSON.stringify(appendSnapshot)) throw new Error('INCREMENTAL_REUSE_EQUIVALENCE_FAILED')
+        if (referenceMetrics.calls !== 0) throw new Error(`Compatible full-reference replay unexpectedly created ${referenceMetrics.calls} model jobs.`)
+
+        const isolationSignup = await localClient!.auth.signUp({
+          email: `voice-map-isolation-${Date.now()}@example.test`, password: `Local-${randomBytes(18).toString('base64url')}!`,
+        })
+        if (isolationSignup.error || !isolationSignup.data.session?.access_token || !isolationSignup.data.user) throw isolationSignup.error || new Error('Isolation signup returned no session.')
+        localIsolationUserId = isolationSignup.data.user.id
+        const isolationToken = isolationSignup.data.session.access_token
+        const isolationMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { authorization: `Bearer ${isolationToken}` } })
+        const isolationMePayload = await isolationMe.json()
+        if (!isolationMe.ok) throw new Error('Isolation provisioning failed.')
+        localIsolationOrganizationId = isolationMePayload.data.memberships[0]?.organizationId || null
+        const isolationResponse = await fetch(`${baseUrl}/api/analysis-runs/${run.id}`, { headers: { authorization: `Bearer ${isolationToken}` } })
+        if (![403, 404].includes(isolationResponse.status)) throw new Error(`INCREMENTAL_REUSE_ISOLATION_FAILED:${isolationResponse.status}`)
+        incrementalMetrics.push({ ...referenceMetrics, role: 'full-reference', exactMembership: true, crossWorkspaceDenied: true })
+        console.log(`INCREMENTAL_REUSE_RESULT ${JSON.stringify({
+          dataset: { baseline: 10, appended: 10, total: 20 }, runs: incrementalMetrics,
+          equivalence: { topicEvidenceProvenanceMembership: true },
+          isolation: { crossWorkspaceAccessStatus: isolationResponse.status, pass: true },
+        })}`)
+      }
       console.log('PASS incremental authenticated: run 1 retained 10 comments; run 2 combined 20 current project comments from 2 sources; old run, Curation, and report remained immutable.')
     }
     console.log(`PASS ${sample.name}: ${coverage.length}/${expectedRows.length} accounted, ${recurring.length} recurring, ${emerging.length} emerging, exact evidence, report PDF.`)
@@ -321,5 +438,17 @@ try {
   pairCaptures.length = 0
   globalThis.fetch = inheritedFetch
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  if (localSupabase) {
+    if (localIsolationOrganizationId) await database.query(`DELETE FROM organizations WHERE id = $1`, [localIsolationOrganizationId])
+    if (localIsolationUserId) {
+      await database.query(`DELETE FROM auth_users WHERE id = $1`, [localIsolationUserId])
+      await database.query(`DELETE FROM auth.users WHERE id = $1`, [localIsolationUserId])
+    }
+    if (localOrganizationId) await database.query(`DELETE FROM organizations WHERE id = $1`, [localOrganizationId])
+    if (localAuthUserId) {
+      await database.query(`DELETE FROM auth_users WHERE id = $1`, [localAuthUserId])
+      await database.query(`DELETE FROM auth.users WHERE id = $1`, [localAuthUserId])
+    }
+  }
   await closeDatabase()
 }

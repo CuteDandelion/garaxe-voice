@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sidebar } from './Sidebar'
 
@@ -18,5 +18,17 @@ describe('Sidebar private monitoring navigation', () => {
     expect(screen.queryByRole('button', { name: 'Waitlist' })).not.toBeInTheDocument()
     rerender(<Sidebar {...props} waitlistMonitoring />)
     expect(screen.getByRole('button', { name: 'Waitlist' })).toBeInTheDocument()
+  })
+
+  it('collapses and expands the shared Demo/auth navigation accessibly', () => {
+    render(<Sidebar {...props} />)
+    const collapse = screen.getByRole('button', { name: 'Collapse navigation' })
+    expect(collapse).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(collapse)
+    expect(screen.getByRole('complementary', { name: 'Project navigation' })).toHaveClass('is-collapsed')
+    const expand = screen.getByRole('button', { name: 'Expand navigation' })
+    expect(expand).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(expand)
+    expect(screen.getByRole('complementary', { name: 'Project navigation' })).not.toHaveClass('is-collapsed')
   })
 })

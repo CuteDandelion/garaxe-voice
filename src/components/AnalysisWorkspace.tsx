@@ -6,6 +6,7 @@ import {
   FileText,
   ShieldCheck,
 } from 'lucide-react'
+import { useRef } from 'react'
 import { Icon } from './Icon'
 import type { AnalysisLlmProgress } from '../lib/api'
 import './AnalysisWorkspace.css'
@@ -255,9 +256,13 @@ function progressStatus(llmProgress: AnalysisLlmProgress) {
 }
 
 function ProcessingAnalysis({
-  stages = [], llmProgress, activeRunStartedAt,
+  stages = [], llmProgress, activeRunId, activeRunStartedAt,
 }: Pick<AnalysisWorkspaceProps, 'stages' | 'llmProgress' | 'activeRunId' | 'activeRunStartedAt'>) {
   const active = stages.find((stage) => stage.state === 'active')
+  const visibleProgress = useRef({ runId: activeRunId, percent: 0 })
+  if (visibleProgress.current.runId !== activeRunId) visibleProgress.current = { runId: activeRunId, percent: 0 }
+  if (llmProgress) visibleProgress.current.percent = Math.max(visibleProgress.current.percent, llmProgress.percent)
+  const percent = visibleProgress.current.percent
   return (
     <div className="analysis-workspace__processing" aria-live="polite" aria-busy="true">
       <span className="analysis-workspace__processing-mark" aria-hidden="true"><span /></span>
@@ -267,20 +272,20 @@ function ProcessingAnalysis({
       {llmProgress ? (
         <section className="analysis-workspace__llm-progress" aria-label="Voice Map intelligence progress">
           <header>
-            <div><p className="analysis-workspace__label">Voice Map intelligence</p><strong>{llmProgress.percent}%</strong></div>
+            <div><p className="analysis-workspace__label">Voice Map intelligence</p><strong>{percent}%</strong></div>
             <span>{elapsedLabel(activeRunStartedAt)}</span>
           </header>
           <div
             className="analysis-workspace__progress-track"
             role="progressbar"
-            aria-label={`Analysis progress: ${llmProgress.percent}%`}
+            aria-label={`Analysis progress: ${percent}%`}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={llmProgress.percent}
-          ><i style={{ width: `${llmProgress.percent}%` }} /></div>
+            aria-valuenow={percent}
+          ><i style={{ width: `${percent}%` }} /></div>
           <footer>
             <span>{progressStatus(llmProgress)}</span>
-            <span>Voice Map intelligence</span>
+            <span>{llmProgress.completed} complete · {llmProgress.inFlight} running · {llmProgress.queued + llmProgress.waiting} waiting</span>
           </footer>
         </section>
       ) : null}

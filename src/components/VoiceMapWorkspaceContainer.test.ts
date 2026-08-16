@@ -1,10 +1,40 @@
 import { describe, expect, it } from 'vitest'
-import { adaptArtifact, applyCuratedProjection, categorizeVisibleSignals, emergingThemesFromCoverage } from './VoiceMapWorkspaceContainer'
+import { adaptArtifact, applyCuratedProjection, categorizeVisibleSignals, emergingThemesFromCoverage, topBucketBubbles } from './VoiceMapWorkspaceContainer'
+import { projectDateRange } from '../lib/dateProjection'
 import type { VoiceMapTheme } from './VoiceMapWorkspace'
 import type { CurationProjection } from '../lib/api'
 import { themeMatchesSignalKind } from './SignalWorkspaceContainer'
 
 describe('Voice Map interpretation candidates', () => {
+  it('projects an inclusive date range from saved evidence without losing exact-once counts', () => {
+    const theme: VoiceMapTheme = {
+      id: 'theme-1', rank: 1, name: 'Guided setup', type: 'desired_outcome', signalTypes: ['desired_outcome'], summary: '3 feedback items\nform a category-first recurring candidate.', confidence: 'moderate', representativeQuote: 'First',
+      metrics: { reviewCount: 3, signalCount: 3, prevalence: 1, averageRating: 3, trend: null, contradictionRate: 0 }, topPhrases: [], entityBreakdown: [], languageBreakdown: [],
+      evidence: [
+        { id: 'e-1', reviewId: 'r-1', quote: 'First', quoteStart: 0, quoteEnd: 5, originalText: 'First', rating: 2, provider: 'csv', entity: null, language: 'en', sourceCreatedAt: '2026-03-01T23:00:00Z', sourceUrl: null, strength: .8 },
+        { id: 'e-2', reviewId: 'r-2', quote: 'Second', quoteStart: 0, quoteEnd: 6, originalText: 'Second', rating: 4, provider: 'csv', entity: null, language: 'en', sourceCreatedAt: '2026-03-31T00:00:00Z', sourceUrl: null, strength: .8 },
+        { id: 'e-3', reviewId: 'r-3', quote: 'Undated', quoteStart: 0, quoteEnd: 7, originalText: 'Undated', rating: 5, provider: 'csv', entity: null, language: 'en', sourceCreatedAt: null, sourceUrl: null, strength: .8 },
+      ],
+    }
+    const coverage = theme.evidence.map((item) => ({ reviewId: item.reviewId, originalText: item.originalText, source: { provider: 'csv', entity: null, rating: item.rating, ratingScale: 5, language: 'en', sourceCreatedAt: item.sourceCreatedAt, sourceUrl: null }, disposition: 'recurring' as const, reason: 'Saved.', themeIds: [theme.id], signals: [] }))
+
+    const result = projectDateRange([theme], coverage, { from: '2026-03-01', to: '2026-03-31' })
+
+    expect(result.coverage.map((item) => item.reviewId)).toEqual(['r-1', 'r-2'])
+    expect(result.themes[0]).toMatchObject({ representativeQuote: 'First', summary: '2 feedback items form a category-first recurring candidate.', metrics: { reviewCount: 2, signalCount: 2, prevalence: 1, averageRating: 3 } })
+    expect(result.themes[0].evidence.map((item) => item.reviewId)).toEqual(['r-1', 'r-2'])
+  })
+  it('keeps bubble identity and state aligned with the visible evidence themes', () => {
+    const theme: VoiceMapTheme = {
+      id: 'emerging-review-1', rank: 1, name: 'Draft privacy assurance needed', topic: 'draft privacy', type: 'objection', signalTypes: ['objection'], summary: 'One grounded comment.', confidence: 'emerging', representativeQuote: 'Need privacy assurance.',
+      metrics: { reviewCount: 1, signalCount: 1, prevalence: .1, averageRating: null, trend: null, contradictionRate: 0 }, topPhrases: [], entityBreakdown: [], languageBreakdown: [],
+      evidence: [{ id: 'signal-1', reviewId: 'review-1', quote: 'Need privacy assurance.', quoteStart: 0, quoteEnd: 23, originalText: 'Need privacy assurance.', rating: null, provider: 'csv_import', entity: null, language: 'en', sourceCreatedAt: '2026-08-30', sourceUrl: null, strength: .9 }],
+    }
+    expect(topBucketBubbles([theme], new Set(), new Set())).toEqual([expect.objectContaining({ themeId: theme.id, state: 'emerging' })])
+    expect(topBucketBubbles([theme], new Set([theme.id]), new Set())).toEqual([expect.objectContaining({ themeId: theme.id, state: 'confirmed' })])
+    expect(topBucketBubbles([theme], new Set(), new Set([theme.id]))).toEqual([expect.objectContaining({ themeId: theme.id, state: 'curated' })])
+  })
+
   it('fills all four actionable signal homes from grounded individual categories without claiming recurrence', () => {
     const kinds = [
       ['pain', 'Payment failed', 4], ['desired_outcome', 'Clear next step', 3], ['objection', 'Unsure it will fit', 2], ['emotion', 'Fear of losing work', 1],
@@ -37,6 +67,25 @@ describe('Voice Map interpretation candidates', () => {
     expect(result.desiredOutcome).toMatchObject({ title: 'Top outcome', reviewCount: 5, supportingThemeIds: ['outcome-top'] })
   })
 
+  it('does not reuse full-run signal counts when a date projection has no evidence for that category', () => {
+    const empty = (type: 'primary_pain' | 'desired_outcome' | 'main_objection' | 'emotional_driver') => ({ id: type, type, title: 'No signal', narrative: '', confidence: 'insufficient' as const, reviewCount: 0, supportingThemeIds: [] })
+    const sourceSignals = {
+      primaryPain: empty('primary_pain'), desiredOutcome: empty('desired_outcome'),
+      mainObjection: { ...empty('main_objection'), title: 'Full-run migration objection', reviewCount: 2, confidence: 'emerging' as const, supportingThemeIds: ['objection-full-run'] },
+      emotionalDriver: empty('emotional_driver'),
+    }
+    const filteredThemes: VoiceMapTheme[] = [{
+      id: 'pain-filtered', rank: 1, name: 'Filtered export pain', type: 'pain', signalTypes: ['pain'], summary: 'Two comments in range.', confidence: 'emerging',
+      representativeQuote: 'Export failed.', metrics: { reviewCount: 2, signalCount: 2, prevalence: .4, averageRating: 1.5, trend: null, contradictionRate: 0 },
+      topPhrases: [], entityBreakdown: [], languageBreakdown: [], evidence: [],
+    }]
+
+    const result = categorizeVisibleSignals(sourceSignals, filteredThemes, false)
+
+    expect(result.primaryPain).toMatchObject({ title: 'Filtered export pain', reviewCount: 2 })
+    expect(result.mainObjection).toMatchObject({ title: 'No main objection signal identified', reviewCount: 0, supportingThemeIds: [] })
+  })
+
   it('does not reuse a pain or withheld multi-label bucket as a desired outcome', () => {
     const empty = (type: 'primary_pain' | 'desired_outcome' | 'main_objection' | 'emotional_driver') => ({ id: type, type, title: 'Insufficient validated evidence', narrative: '', confidence: 'insufficient' as const, reviewCount: 0, supportingThemeIds: [] })
     const themes: VoiceMapTheme[] = [{
@@ -61,12 +110,17 @@ describe('Voice Map interpretation candidates', () => {
     const themes = emergingThemesFromCoverage([{
       reviewId: 'review-emerging', originalText: 'The account choice was confusing.', disposition: 'emerging',
       reason: 'Not enough similar feedback yet.', themeIds: [],
+      source: { provider: 'support_portal', entity: 'EMEA', rating: 2, ratingScale: 5, language: 'en', sourceCreatedAt: '2026-08-04T00:00:00.000Z', sourceUrl: 'https://example.test/reviews/1' },
       signals: [{ label: 'Confusing account choice', topic: 'account migration proof', signalType: 'objection', signalTypes: ['objection'], category: 'objection', categories: ['objection'], sentiment: 'neutral', confidence: .35, quote: 'account choice was confusing', interpretedBy: 'analysis_engine' }],
     }])
 
     expect(themes).toHaveLength(1)
     expect(themes[0]).toMatchObject({ name: 'Confusing account choice', topic: 'account migration proof', type: 'objection', confidence: 'emerging', metrics: { reviewCount: 1 } })
-    expect(themes[0].evidence).toEqual([expect.objectContaining({ reviewId: 'review-emerging', quote: 'account choice was confusing', originalText: 'The account choice was confusing.' })])
+    expect(themes[0].evidence).toEqual([expect.objectContaining({
+      reviewId: 'review-emerging', quote: 'account choice was confusing', originalText: 'The account choice was confusing.',
+      provider: 'support_portal', entity: 'EMEA', rating: 2, ratingScale: 5, language: 'en',
+      sourceCreatedAt: '2026-08-04T00:00:00.000Z', sourceUrl: 'https://example.test/reviews/1',
+    })])
   })
 
   it('renders a grounded other signal without inventing a public top-level type', () => {
@@ -170,14 +224,14 @@ describe('Voice Map interpretation candidates', () => {
           provider: 'opencode_go', model: 'test-model', promptVersion: 'root-cause-first-v5', schemaVersion: 'cluster-interpretation-v3',
         } },
         evidence: [{ id: 'signal-1', reviewId: 'review-1', quote: 'Nobody answered the phone', quoteStart: 0, quoteEnd: 25,
-          originalText: 'Nobody answered the phone, so the curry was left outside.', rating: 1, provider: 'upload', entity: null,
-          language: 'en', sourceCreatedAt: null, strength: .9, isRepresentative: true }],
+          originalText: 'Nobody answered the phone, so the curry was left outside.', rating: 1, ratingScale: 5, provider: 'upload', entity: null,
+          language: 'en', sourceCreatedAt: '2026-08-14T00:00:00Z', strength: .9, isRepresentative: true }],
       }],
     })
     expect(adapted.themes[0]).toMatchObject({
       name: 'Failed delivery handoff', type: 'pain', signalTypes: ['pain'], sentiment: 'negative',
       summary: 'Root cause: Nobody answered the phone. Consequence: The order was left outside and leaked.',
-      evidence: [{ originalText: 'Nobody answered the phone, so the curry was left outside.' }],
+      evidence: [{ originalText: 'Nobody answered the phone, so the curry was left outside.', rating: 1, ratingScale: 5, sourceCreatedAt: '2026-08-14T00:00:00Z' }],
     })
     expect(adapted.voiceMap.phrases[0]).toMatchObject({ text: 'Failed delivery handoff', category: 'pain' })
     expect(adapted.voiceMap.signals.primaryPain).toMatchObject({
